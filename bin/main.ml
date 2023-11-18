@@ -1,8 +1,8 @@
 open Printf
-open Hugorm.Main
+open Hugorm
 open Hugorm.Syntax
 
 let () =
-  let input_program = Add1 (Num 41L) in
-  let program = compile_program input_program in
+  let input_program = Let ("x", Num 1L, Let ("x", Num 2L, Id "x")) in
+  let program = Compile.compile_program input_program in
   printf "%s\n" program

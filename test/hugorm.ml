@@ -1,6 +1,7 @@
 open Hugorm
 open Hugorm.Asm
 open Hugorm.Syntax
+open Hugorm.Compile
 
 let asm =
   let pp_asm fmt asm = Format.fprintf fmt "%s" (Asm.string_of_asm asm) in
@@ -10,13 +11,13 @@ let test_compile_num () =
   Alcotest.(check asm)
     "Compile `Num`"
     [ IMov (Reg RAX, Const 42L) ]
-    (Main.compile_expr (Num 42L))
+    (Compile.compile_expr Env.empty (Num 42L))
 
 let test_compile_add1 () =
   Alcotest.(check asm)
     "Compile `Add1`"
     [ IMov (Reg RAX, Const 42L); IAdd (Reg RAX, Const 1L) ]
-    (Main.compile_expr (Add1 (Num 42L)))
+    (Compile.compile_expr Env.empty (Add1 (Num 42L)))
 
 let () =
   Alcotest.run "Compile"
