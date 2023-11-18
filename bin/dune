@@ -1,0 +1,4 @@
+(executable
+ (public_name hugorm)
+ (name main)
+ (libraries hugorm))

@@ -1,0 +1,5 @@
+# dune init proj hugorm
+# OCAMLPARAM: unset
+# Shared cache: disabled
+# Workspace root: /Users/volesen/Projects/hugorm
+# Auto-detected concurrency: 8
