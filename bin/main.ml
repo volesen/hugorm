@@ -1,9 +1,8 @@
 open Printf
 open Hugorm.Main
+open Hugorm.Syntax
 
 let () =
-  let input_file = open_in Sys.argv.(1) in
-  let input_program = Int64.of_string (input_line input_file) in
-  close_in input_file;
+  let input_program = Add1 (Num 41L) in
   let program = compile_program input_program in
   printf "%s\n" program
