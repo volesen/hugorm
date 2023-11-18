@@ -1,2 +1,2 @@
-type expr = int64
+type expr = Num of int64 | Add1 of expr | Sub1 of expr
 type program = expr

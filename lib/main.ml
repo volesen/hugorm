@@ -1,7 +1,11 @@
 open Asm
 open Syntax
 
-let compile_expr (n : expr) : asm = [ IMov (Reg RAX, Const n) ]
+let rec compile_expr (expr : expr) : asm =
+  match expr with
+  | Num n -> [ IMov (Reg RAX, Const n) ]
+  | Add1 e -> compile_expr e @ [ IAdd (Reg RAX, Const 1L) ]
+  | Sub1 e -> compile_expr e @ [ IAdd (Reg RAX, Const (-1L)) ]
 
 let compile_program (program : program) : string =
   let instrs = compile_expr program in
