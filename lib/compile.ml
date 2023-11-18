@@ -22,6 +22,15 @@ let rec compile_expr (env : env) (expr : expr) : asm =
       compile_expr env e1 (* Result in RAX *)
       @ [ IMov (RegOffset (RSP, -offset), Reg RAX) ] (* Move to stack *)
       @ compile_expr env' e2
+  | If (e1, e2, e3) ->
+      let else_label = "" in
+      let done_label = "" in
+      compile_expr env e1 (* Result in RAX *)
+      @ [ ICmp (Reg RAX, Const 0L); IJe else_label ]
+      @ compile_expr env e2 (* Compile then branch *)
+      @ [ IJmp done_label; ILabel else_label ]
+      @ compile_expr env e3 (* Compile else branch *)
+      @ [ ILabel done_label ]
 
 let compile_program (program : program) : string =
   let env = Env.empty in
