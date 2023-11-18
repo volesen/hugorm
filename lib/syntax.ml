@@ -4,5 +4,6 @@ type expr =
   | Sub1 of expr
   | Id of string
   | Let of string * expr * expr
+  | If of expr * expr * expr
 
 type program = expr
