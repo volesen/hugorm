@@ -1,2 +1,3 @@
 (test
- (name hugorm))
+ (name hugorm)
+ (libraries hugorm alcotest))
