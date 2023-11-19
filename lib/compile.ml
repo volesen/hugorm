@@ -18,6 +18,10 @@ let tag (e : 'a expr) : tag expr =
     | EPrim1 (op, e, _) ->
         let e', cur = tag' e cur in
         (EPrim1 (op, e', cur), cur + 1)
+    | EPrim2 (op, e1, e2, _) ->
+        let e1', cur = tag' e1 cur in
+        let e2', cur = tag' e2 cur in
+        (EPrim2 (op, e1', e2', cur), cur + 1)
     | EId (x, _) -> (EId (x, cur), cur + 1)
     | ELet (x, e1, e2, _) ->
         let e1', cur = tag' e1 cur in
@@ -39,6 +43,7 @@ let rec compile_expr (env : env) (expr : tag expr) : asm =
   | EId (x, _) -> compile_id env x
   | ELet (x, e1, e2, _) -> compile_let env x e1 e2
   | EIf (e1, e2, e3, tag) -> compile_if env e1 e2 e3 tag
+  | _ -> failwith "TODO"
 
 and compile_prim1 env op e =
   match op with
