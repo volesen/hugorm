@@ -5,7 +5,14 @@ type arg =
   | Reg of reg
   | RegOffset of reg * int (* [reg + 8 * i] *)
 
-type instruction = IMov of arg * arg | IAdd of arg * arg
+type instruction =
+  | IMov of arg * arg
+  | IAdd of arg * arg
+  | ILabel of string
+  | IJmp of string
+  | IJe of string
+  | ICmp of arg * arg
+
 type asm = instruction list
 
 let string_of_reg (reg : reg) : string =
@@ -27,6 +34,11 @@ let string_of_instruction (instr : instruction) : string =
       "  mov " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
   | IAdd (arg1, arg2) ->
       "  add " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
+  | ILabel label -> label ^ ":"
+  | IJmp label -> "  jmp " ^ label
+  | IJe label -> "  je " ^ label
+  | ICmp (arg1, arg2) ->
+      "  cmp " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
 
 let string_of_asm (asm : asm) : string =
   asm |> List.map string_of_instruction |> String.concat "\n"
