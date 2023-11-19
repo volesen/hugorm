@@ -1,9 +1,10 @@
-type expr =
-  | Num of int64
-  | Add1 of expr
-  | Sub1 of expr
-  | Id of string
-  | Let of string * expr * expr
-  | If of expr * expr * expr
+type 'a program = 'a expr
 
-type program = expr
+and 'a expr =
+  | ENumber of int64 * 'a
+  | EPrim1 of prim1 * 'a expr * 'a
+  | EId of string * 'a
+  | ELet of string * 'a expr * 'a expr * 'a
+  | EIf of 'a expr * 'a expr * 'a expr * 'a
+
+and prim1 = Add1 | Sub1
