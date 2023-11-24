@@ -8,10 +8,13 @@ type arg =
 type instruction =
   | IMov of arg * arg
   | IAdd of arg * arg
+  | ISub of arg * arg
+  | IMul of arg * arg
   | ILabel of string
   | IJmp of string
   | IJe of string
   | ICmp of arg * arg
+  | IRet
 
 type asm = instruction list
 
@@ -34,11 +37,16 @@ let string_of_instruction (instr : instruction) : string =
       "  mov " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
   | IAdd (arg1, arg2) ->
       "  add " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
+  | ISub (arg1, arg2) ->
+      "  sub " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
+  | IMul (arg1, arg2) ->
+      "  imul " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
   | ILabel label -> label ^ ":"
   | IJmp label -> "  jmp " ^ label
   | IJe label -> "  je " ^ label
   | ICmp (arg1, arg2) ->
       "  cmp " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
+  | IRet -> "  ret"
 
 let string_of_asm (asm : asm) : string =
   asm |> List.map string_of_instruction |> String.concat "\n"
