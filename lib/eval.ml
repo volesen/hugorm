@@ -44,4 +44,13 @@ and eval_prim2 env op l r =
   | Add, VInt a, VInt b -> VInt (Int64.add a b)
   | Sub, VInt a, VInt b -> VInt (Int64.sub a b)
   | Mul, VInt a, VInt b -> VInt (Int64.mul a b)
+  (* TODO: Short circuit `And` and `Or` *)
+  | And, VBool a, VBool b -> VBool (a && b)
+  | Or, VBool a, VBool b -> VBool (a && b) 
+  | Less, VInt a, VInt b -> VBool (a < b)
+  | Greater, VInt a, VInt b -> VBool (a > b)
+  | LessEq, VInt a, VInt b -> VBool (a <= b)
+  | GreaterEq, VInt a, VInt b -> VBool (a >= b)
+  | Eq, VInt a, VInt b -> VBool (a = b)
+  | Ne, VInt a, VInt b -> VBool (a <> b)
   | _ -> failwith err_type_mismatch
