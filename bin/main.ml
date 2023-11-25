@@ -2,28 +2,22 @@ open Printf
 open Hugorm
 open Hugorm.Syntax
 
+let expr =
+  EPrim2
+    (* 12 *)
+    ( Add,
+      EPrim1 (Sub1, ENumber (5L, ()), ()),
+      (* 4 *)
+      EPrim2
+        ( Mul,
+          (* 8 *)
+          ENumber (2L, ()),
+          (* 4 *)
+          EPrim1 (Add1, ENumber (3L, ()), ()),
+          () ),
+      (* 4 *)
+      () )
+
 let () =
-    (*
-    let input_program =
-    ELet
-      ( "x",
-        ENumber (1L, ""),
-        ELet ("x", ENumber (2L, ""), EId ("x", ""), ""),
-        "" )
-  in
-  *)
-  let if_program = 
-    ELet(
-      "x",
-      EPrim1(Sub1, ENumber(2L, ""), ""),
-      EIf(
-        EId("x", ""),
-        ENumber(42L, ""),
-        ENumber(69L, ""),
-        ""
-      ),
-      ""
-    )
-  in
-  let program = Compile.compile_program if_program in
+  let program = Compile.compile_to_asm_string expr in
   printf "%s\n" program
