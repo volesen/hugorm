@@ -106,6 +106,7 @@ let rename (e : tag expr) : tag expr =
         (* Rename the binding *)
         let x' = x ^ string_of_int tag in
         let env' = Env.add x x' env in
+        (* Disallow recursion in the bind for now *)
         ELet (x', rename' env e, rename' env' body, tag)
   in
   rename' Env.empty e
@@ -127,7 +128,6 @@ and compile_prim1 env op e =
   | Sub1 -> [ IAdd (Reg RAX, Const (-1L)) ]
 
 and compile_prim2 env op l r =
-  (* AST is in ANF, so `l` and `r` are immediate values *)
   let l_arg = compile_imm env l in
   let r_arg = compile_imm env r in
   [ IMov (Reg RAX, r_arg) ]
@@ -166,8 +166,13 @@ and compile_imm env e =
   | _ -> failwith err_unreachable
 
 let compile expr =
-  expr |> tag |> rename |> to_anf |> tag (* Re-tag after ANF *)
-  |> compile_expr Env.empty
+  let tagged = tag expr in
+  let renamed = rename tagged in
+  let anfed = tag (to_anf renamed) in
+  let _ = assert (is_anf anfed) in
+  (* Re-tag after ANF conversion *)
+  let tagged = tag anfed in
+  compile_expr Env.empty tagged
 
 let compile_to_asm_string (program : 'a program) : string =
   let instrs = compile program in
