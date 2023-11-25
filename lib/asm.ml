@@ -7,6 +7,7 @@ type arg =
 
 type instruction =
   | IMov of arg * arg
+  | INeg of arg
   | IAdd of arg * arg
   | ISub of arg * arg
   | IMul of arg * arg
@@ -35,6 +36,7 @@ let string_of_instruction (instr : instruction) : string =
   match instr with
   | IMov (arg1, arg2) ->
       "  mov " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
+  | INeg arg -> "  neg " ^ string_of_arg arg
   | IAdd (arg1, arg2) ->
       "  add " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
   | ISub (arg1, arg2) ->

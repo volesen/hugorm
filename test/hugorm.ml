@@ -16,8 +16,8 @@ let test_compile_num () =
 let test_compile_add1 () =
   Alcotest.(check asm)
     "Compile `Add1`"
-    [ IMov (Reg RAX, Const 42L); IAdd (Reg RAX, Const 1L) ]
-    (Compile.compile_expr Env.empty (EPrim1 (Add1, ENumber (42L, 1), 2)))
+    [ IMov (Reg RAX, Const 42L); INeg (Reg RAX) ]
+    (Compile.compile_expr Env.empty (EPrim1 (Neg, ENumber (42L, 1), 2)))
 
 let () =
   Alcotest.run "Compile"

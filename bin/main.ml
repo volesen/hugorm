@@ -6,14 +6,14 @@ let expr =
   EPrim2
     (* 12 *)
     ( Add,
-      EPrim1 (Sub1, ENumber (5L, ()), ()),
+      EPrim1 (Neg, ENumber (5L, ()), ()),
       (* 4 *)
       EPrim2
         ( Mul,
           (* 8 *)
           ENumber (2L, ()),
           (* 4 *)
-          EPrim1 (Add1, ENumber (3L, ()), ()),
+          EPrim1 (Neg, ENumber (3L, ()), ()),
           () ),
       (* 4 *)
       () )

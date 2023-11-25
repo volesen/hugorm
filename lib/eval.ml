@@ -34,8 +34,7 @@ and eval_if env e1 e2 e3 =
 
 and eval_prim1 env op e =
   match (op, eval env e) with
-  | Add1, VInt n -> VInt (Int64.add n 1L)
-  | Sub1, VInt n -> VInt (Int64.sub n 1L)
+  | Neg, VInt n -> VInt (Int64.neg n)
   | _ -> failwith err_type_mismatch
 
 and eval_prim2 env op l r =
