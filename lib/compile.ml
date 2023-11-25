@@ -122,11 +122,7 @@ let rec compile_expr (env : env) (expr : tag expr) : asm =
 
 and compile_prim1 env op e =
   (* TODO: Consider using compile_imm *)
-  compile_expr env e
-  @
-  match op with
-  | Add1 -> [ IAdd (Reg RAX, Const 1L) ]
-  | Sub1 -> [ IAdd (Reg RAX, Const (-1L)) ]
+  compile_expr env e @ match op with Neg -> [ INeg (Reg RAX) ]
 
 and compile_prim2 env op l r =
   let l_arg = compile_imm env l in
