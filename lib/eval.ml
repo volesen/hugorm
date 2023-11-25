@@ -14,9 +14,10 @@ let rec eval (env : env) (e : 'a expr) : value =
   match e with
   | ENumber (n, _) -> VInt n
   | EPrim1 (op, e, _) -> eval_prim1 env op e
+  | EPrim2 (op, l, r, _) -> eval_prim2 env op l r
   | EId (x, _) -> eval_id env x
   | ELet (x, e1, e2, _) -> eval_let env x e1 e2
-  | EIf (e1, e2, e3, _) -> eval_if env e1 e2 e3
+  | EIf (cond, thn, els, _) -> eval_if env cond thn els
 
 and eval_id env x =
   match Env.find_opt x env with Some v -> v | None -> failwith err_unbound_var
@@ -35,4 +36,11 @@ and eval_prim1 env op e =
   match (op, eval env e) with
   | Add1, VInt n -> VInt (Int64.add n 1L)
   | Sub1, VInt n -> VInt (Int64.sub n 1L)
+  | _ -> failwith err_type_mismatch
+
+and eval_prim2 env op l r =
+  match (op, eval env l, eval env r) with
+  | Add, VInt a, VInt b -> VInt (Int64.add a b)
+  | Sub, VInt a, VInt b -> VInt (Int64.sub a b)
+  | Mul, VInt a, VInt b -> VInt (Int64.mul a b)
   | _ -> failwith err_type_mismatch
