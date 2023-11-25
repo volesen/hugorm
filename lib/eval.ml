@@ -13,6 +13,7 @@ let err_type_mismatch = "Error: Type mismatch"
 let rec eval (env : env) (e : 'a expr) : value =
   match e with
   | ENumber (n, _) -> VInt n
+  | EBool (b, _) -> VBool b
   | EPrim1 (op, e, _) -> eval_prim1 env op e
   | EPrim2 (op, l, r, _) -> eval_prim2 env op l r
   | EId (x, _) -> eval_id env x
@@ -35,6 +36,7 @@ and eval_if env e1 e2 e3 =
 and eval_prim1 env op e =
   match (op, eval env e) with
   | Neg, VInt n -> VInt (Int64.neg n)
+  | Not, VBool b -> VBool (not b)
   | _ -> failwith err_type_mismatch
 
 and eval_prim2 env op l r =
