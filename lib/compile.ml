@@ -121,6 +121,7 @@ let rec compile_expr (env : env) (expr : tag expr) : asm =
   | EIf (cond, thn, els, tag) -> compile_if env cond thn els tag
 
 and compile_prim1 env op e =
+  (* TODO: Consider using compile_imm *)
   compile_expr env e
   @
   match op with
@@ -150,6 +151,7 @@ and compile_let env x e body =
 and compile_if env cond thn els tag =
   let else_label = "if_else_" ^ string_of_int tag in
   let done_label = "if_done_" ^ string_of_int tag in
+  (* TODO: Consider using compile_imm *)
   compile_expr env cond (* Result in RAX *)
   @ [ ICmp (Reg RAX, Const 0L); IJe else_label ]
   @ compile_expr env thn (* Compile then branch *)
