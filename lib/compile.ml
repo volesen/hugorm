@@ -127,6 +127,7 @@ and compile_prim1 env op e =
   | Sub1 -> [ IAdd (Reg RAX, Const (-1L)) ]
 
 and compile_prim2 env op l r =
+  (* AST is in ANF, so `l` and `r` are immediate values *)
   let l_arg = compile_imm env l in
   let r_arg = compile_imm env r in
   [ IMov (Reg RAX, r_arg) ]
