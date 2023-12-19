@@ -21,7 +21,7 @@ let rec eval (env : env) (e : 'a expr) : value =
   | ENumber (n, _) -> VInt n
   | EBool (b, _) -> VBool b
   | EPrim1 (op, e, _) -> eval_prim1 env op e
-  | EPrim2 (((And | Or) as op), l, r, _) -> eval_prim2' env op l r
+  | EPrim2 (((And | Or) as op), l, r, _) -> eval_logical_prim2 env op l r
   | EPrim2 (op, l, r, _) -> eval_prim2 env op l r
   | EId (x, _) -> eval_id env x
   | ELet (x, e1, e2, _) -> eval_let env x e1 e2
@@ -59,7 +59,8 @@ and eval_prim2 env op l r =
   | Ne, VInt a, VInt b -> VBool (a <> b)
   | _ -> failwith err_type_mismatch
 
-and eval_prim2' env op l r =
+(* [eval_logical_prim2] implements short-circuiting *)
+and eval_logical_prim2 env op l r =
   let assert_bool v =
     match v with VBool _ as v -> v | _ -> failwith err_type_mismatch
   in

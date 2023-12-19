@@ -1,5 +1,13 @@
 open Asm
 open Syntax
+
+let min_int = Int64.div Int64.min_int 2L
+let max_int = Int64.div Int64.max_int 2L
+let const_true = Const 0xFFFFFFFFFFFFFFFFL
+let const_false = Const 0x7FFFFFFFFFFFFFFFL
+let bool_mask = Const 0x8000000000000000L
+let scratch_reg = Reg R11
+
 module Env = Map.Make (String)
 
 type offset = int
@@ -10,6 +18,7 @@ let add x env =
   (Env.add x offset env, offset)
 
 let err_unreachable = "Error: Unreachable"
+let err_integer_overflow = "Error: Integer overflow"
 
 type tag = int
 
@@ -17,6 +26,7 @@ let tag (e : 'a expr) : tag expr =
   let rec tag' (e : 'a expr) (cur : tag) : tag expr * tag =
     match e with
     | ENumber (n, _) -> (ENumber (n, cur), cur + 1)
+    | EBool (b, _) -> (EBool (b, cur), cur + 1)
     | EPrim1 (op, e, _) ->
         let e, cur = tag' e cur in
         (EPrim1 (op, e, cur), cur + 1)
@@ -41,8 +51,7 @@ let tag (e : 'a expr) : tag expr =
 (* Is expression immediate? *)
 let is_imm expr =
   match expr with
-  | ENumber _ -> true
-  | EId _ -> true
+  | ENumber _ | EBool _ | EId _ -> true
   | EPrim1 _ | EPrim2 _ | ELet _ | EIf _ -> false
 
 (* Are all operands are immediate? *)
@@ -62,6 +71,7 @@ let to_anf expr =
   let rec to_anf' (expr : tag expr) : unit expr * (string * unit expr) list =
     match expr with
     | ENumber (n, _) -> (ENumber (n, ()), [])
+    | EBool (b, _) -> (EBool (b, ()), [])
     | EId (x, _) -> (EId (x, ()), [])
     | EPrim1 (op, e, tag) ->
         let imm, ctx = to_anf' e in
@@ -96,7 +106,8 @@ let to_anf expr =
 let rename (e : tag expr) : tag expr =
   let rec rename' env e =
     match e with
-    | ENumber (n, tag) -> ENumber (n, tag)
+    | ENumber _ as e -> e
+    | EBool _ as e -> e
     | EId (x, tag) -> EId (Env.find x env, tag)
     | EPrim1 (op, e, tag) -> EPrim1 (op, rename' env e, tag)
     | EPrim2 (op, l, r, tag) -> EPrim2 (op, rename' env l, rename' env r, tag)
@@ -113,26 +124,65 @@ let rename (e : tag expr) : tag expr =
 
 let rec compile_expr (env : env) (expr : tag expr) : asm =
   match expr with
-  | ENumber (n, _) -> [ IMov (Reg RAX, Const n) ]
+  | (ENumber _ | EBool _ | EId _) as e -> [ IMov (Reg RAX, compile_imm env e) ]
   | EPrim1 (op, e, _) -> compile_prim1 env op e
-  | EPrim2 (op, l, r, _) -> compile_prim2 env op l r
-  | EId (x, _) -> compile_id env x
+  | EPrim2 (op, l, r, tag) -> compile_prim2 env op l r tag
   | ELet (x, e, body, _) -> compile_let env x e body
   | EIf (cond, thn, els, tag) -> compile_if env cond thn els tag
 
-and compile_prim1 env op e =
-  (* TODO: Consider using compile_imm *)
-  compile_expr env e @ match op with Neg -> [ INeg (Reg RAX) ]
+and compile_imm env e =
+  match e with
+  | ENumber (n, _) ->
+      if n > max_int || n < min_int then failwith err_integer_overflow
+      else Const (Int64.shift_left n 1)
+  | EBool (true, _) -> const_true
+  | EBool (false, _) -> const_false
+  | EId (x, _) ->
+      let offset = Env.find x env in
+      RegOffset (RSP, -offset)
+  | _ -> failwith err_unreachable
 
-and compile_prim2 env op l r =
-  let l_arg = compile_imm env l in
-  let r_arg = compile_imm env r in
-  [ IMov (Reg RAX, r_arg) ]
+and compile_prim1 env op e =
+  let arg = compile_imm env e in
+  [ IMov (Reg RAX, arg) ]
   @
   match op with
-  | Add -> [ IAdd (Reg RAX, l_arg) ]
-  | Sub -> [ ISub (Reg RAX, l_arg) ]
-  | Mul -> [ IMul (Reg RAX, l_arg) ]
+  | Neg -> [ INeg (Reg RAX) ]
+  | Not -> [ IMov (scratch_reg, bool_mask); IXor (Reg RAX, Reg R11) ]
+
+and compile_prim2 env op l r tag =
+  let l_arg = compile_imm env l in
+  let r_arg = compile_imm env r in
+  [ IMov (Reg RAX, l_arg) ]
+  @ [ IMov (scratch_reg, r_arg) ]
+  @
+  match op with
+  | Add -> [ IAdd (Reg RAX, scratch_reg) ]
+  | Sub -> [ ISub (Reg RAX, scratch_reg) ]
+  | Mul -> [ IMul (Reg RAX, scratch_reg); ISar (Reg RAX, Const 1L) ]
+  | And -> [ IAnd (Reg RAX, scratch_reg) ]
+  | Or -> [ IOr (Reg RAX, scratch_reg) ]
+  | (Less | Greater | LessEq | GreaterEq | Eq | Ne) as cmp ->
+      let cmp_fail = "cmp_fail_" ^ string_of_int tag in
+      let jump_instr =
+        match cmp with
+        | Less -> IJl cmp_fail
+        | Greater -> IJg cmp_fail
+        | LessEq -> IJle cmp_fail
+        | GreaterEq -> IJge cmp_fail
+        | Eq -> IJe cmp_fail
+        | Ne -> IJne cmp_fail
+        | _ -> failwith err_unreachable
+      in
+      [
+        ICmp (Reg RAX, scratch_reg);
+        (* Assume the result is true *)
+        IMov (Reg RAX, const_true);
+        jump_instr;
+        (* the comparison failed *)
+        IMov (Reg RAX, const_false);
+        ILabel cmp_fail;
+      ]
 
 and compile_id env x =
   let offset = Env.find x env in
@@ -147,21 +197,17 @@ and compile_let env x e body =
 and compile_if env cond thn els tag =
   let else_label = "if_else_" ^ string_of_int tag in
   let done_label = "if_done_" ^ string_of_int tag in
-  (* TODO: Consider using compile_imm *)
-  compile_expr env cond (* Result in RAX *)
-  @ [ ICmp (Reg RAX, Const 0L); IJe else_label ]
+  let arg = compile_imm env cond in
+  [
+    IMov (Reg RAX, arg);
+    IMov (scratch_reg, const_false);
+    ICmp (Reg RAX, scratch_reg);
+    IJe else_label;
+  ]
   @ compile_expr env thn (* Compile then branch *)
   @ [ IJmp done_label; ILabel else_label ]
   @ compile_expr env els (* Compile else branch *)
   @ [ ILabel done_label ]
-
-and compile_imm env e =
-  match e with
-  | ENumber (n, _) -> Const n
-  | EId (x, _) ->
-      let offset = Env.find x env in
-      RegOffset (RSP, -offset)
-  | _ -> failwith err_unreachable
 
 let compile expr =
   let tagged = tag expr in
