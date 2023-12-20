@@ -2,22 +2,31 @@ open Printf
 open Hugorm
 open Hugorm.Syntax
 
-let expr =
-  EPrim2
-    (* 12 *)
-    ( Add,
-      EPrim1 (Neg, ENumber (5L, ()), ()),
-      (* 4 *)
-      EPrim2
-        ( Mul,
-          (* 8 *)
-          ENumber (2L, ()),
-          (* 4 *)
-          EPrim1 (Neg, ENumber (3L, ()), ()),
-          () ),
-      (* 4 *)
-      () )
-
 let () =
+  (*let expr = EBool (true, ()) in *)
+  (*let expr = ENumber (3L, ()) in*)
+  (*let expr = EPrim2 (Sub, ENumber (2L, ()), ENumber (1L, ()), ()) in*)
+  (*let expr = EPrim2 (And, EBool(false, ()), EBool(true, ()), ()) in*)
+  (*let expr = EPrim1 (Not, EBool(false, ()), ()) in*)
+  let expr = EPrim2 (
+      LessEq,
+      ENumber(69L, ()),
+      ENumber(69L, ()),
+      ()
+    )
+  in
   let program = Compile.compile_to_asm_string expr in
-  printf "%s\n" program
+  (* Write the assembler to a file *)
+  let oc = open_out "out/a.s" in
+  fprintf oc "%s" program;
+  close_out oc;
+
+  (* Assemble out.s to out.o *)
+  let _ = Sys.command "nasm -f macho64 -o out/a.o out/a.s" in
+
+  (* Link out.o to out *)
+  let _ = Sys.command "clang -g -arch x86_64 -o out/a main.c out/a.o" in
+
+  (* Run the program *)
+  let _ = Sys.command "./out/a" in
+  ()

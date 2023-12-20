@@ -1,4 +1,4 @@
-type reg = RAX | RSP
+type reg = RAX | RSP | R11
 
 type arg =
   | Const of int64
@@ -11,16 +11,25 @@ type instruction =
   | IAdd of arg * arg
   | ISub of arg * arg
   | IMul of arg * arg
+  | ISar of arg * arg
+  | IAnd of arg * arg
+  | IOr of arg * arg
+  | IXor of arg * arg
   | ILabel of string
   | IJmp of string
   | IJe of string
+  | IJne of string
+  | IJl of string
+  | IJg of string
+  | IJle of string
+  | IJge of string
   | ICmp of arg * arg
   | IRet
 
 type asm = instruction list
 
 let string_of_reg (reg : reg) : string =
-  match reg with RAX -> "RAX" | RSP -> "RSP"
+  match reg with RAX -> "RAX" | RSP -> "RSP" | R11 -> "R11"
 
 let string_of_arg (arg : arg) : string =
   match arg with
@@ -43,9 +52,21 @@ let string_of_instruction (instr : instruction) : string =
       "  sub " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
   | IMul (arg1, arg2) ->
       "  imul " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
+  | ISar (arg1, arg2) ->
+      "  sar " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
+  | IAnd (arg1, arg2) ->
+      "  and " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
+  | IOr (arg1, arg2) -> "  or " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
+  | IXor (arg1, arg2) ->
+      "  xor " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
   | ILabel label -> label ^ ":"
   | IJmp label -> "  jmp " ^ label
   | IJe label -> "  je " ^ label
+  | IJne label -> "  jne " ^ label
+  | IJl label -> "  jl " ^ label
+  | IJg label -> "  jg " ^ label
+  | IJle label -> "  jle " ^ label
+  | IJge label -> "  jge " ^ label
   | ICmp (arg1, arg2) ->
       "  cmp " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
   | IRet -> "  ret"
