@@ -6,7 +6,12 @@ let max_int = Int64.div Int64.max_int 2L
 let const_true = Const 0xFFFFFFFFFFFFFFFFL
 let const_false = Const 0x7FFFFFFFFFFFFFFFL
 let bool_mask = Const 0x8000000000000000L
+let bool_tag = Const 0x0000000000000001L
 let scratch_reg = Reg R11
+let err_code_not_a_number = Const 1L
+let err_code_not_a_boolean = Const 2L
+let err_unreachable = "Error: Unreachable"
+let err_integer_overflow = "Error: Integer overflow"
 
 module Env = Map.Make (String)
 
@@ -16,9 +21,6 @@ and env = int Env.t
 let add x env =
   let offset = Env.cardinal env + 1 in
   (Env.add x offset env, offset)
-
-let err_unreachable = "Error: Unreachable"
-let err_integer_overflow = "Error: Integer overflow"
 
 type tag = int
 
@@ -47,6 +49,25 @@ let tag (e : 'a expr) : tag expr =
   in
   let tagged, _ = tag' e 1 in
   tagged
+
+let rename (e : tag expr) : tag expr =
+  let rec rename' env e =
+    match e with
+    | ENumber _ as e -> e
+    | EBool _ as e -> e
+    | EId (x, tag) -> EId (Env.find x env, tag)
+    | EPrim1 (op, e, tag) -> EPrim1 (op, rename' env e, tag)
+    | EPrim2 (op, l, r, tag) -> EPrim2 (op, rename' env l, rename' env r, tag)
+    | EIf (cond, thn, els, tag) ->
+        EIf (rename' env cond, rename' env thn, rename' env els, tag)
+    | ELet (x, e, body, tag) ->
+        (* Rename the binding *)
+        let x' = x ^ string_of_int tag in
+        let env' = Env.add x x' env in
+        (* Disallow recursion in the bind for now *)
+        ELet (x', rename' env e, rename' env' body, tag)
+  in
+  rename' Env.empty e
 
 (* Is expression immediate? *)
 let is_imm expr =
@@ -103,24 +124,20 @@ let to_anf expr =
   let imm, ctx = to_anf' expr in
   mk_let imm ctx
 
-let rename (e : tag expr) : tag expr =
-  let rec rename' env e =
-    match e with
-    | ENumber _ as e -> e
-    | EBool _ as e -> e
-    | EId (x, tag) -> EId (Env.find x env, tag)
-    | EPrim1 (op, e, tag) -> EPrim1 (op, rename' env e, tag)
-    | EPrim2 (op, l, r, tag) -> EPrim2 (op, rename' env l, rename' env r, tag)
-    | EIf (cond, thn, els, tag) ->
-        EIf (rename' env cond, rename' env thn, rename' env els, tag)
-    | ELet (x, e, body, tag) ->
-        (* Rename the binding *)
-        let x' = x ^ string_of_int tag in
-        let env' = Env.add x x' env in
-        (* Disallow recursion in the bind for now *)
-        ELet (x', rename' env e, rename' env' body, tag)
-  in
-  rename' Env.empty e
+let assert_number reg =
+  [
+    IMov (scratch_reg, bool_tag);
+    ITest (Reg reg, scratch_reg);
+    (* We only have two types. If it is not a boolean, it must tbe number *)
+    IJnz "error_not_a_number";
+  ]
+
+let assert_boolean reg =
+  [
+    IMov (scratch_reg, bool_tag);
+    ITest (Reg reg, scratch_reg);
+    IJz "error_not_a_boolean";
+  ]
 
 let rec compile_expr (env : env) (expr : tag expr) : asm =
   match expr with
@@ -139,7 +156,7 @@ and compile_imm env e =
   | EBool (false, _) -> const_false
   | EId (x, _) ->
       let offset = Env.find x env in
-      RegOffset (RSP, -offset)
+      RegOffset (RBP, -offset)
   | _ -> failwith err_unreachable
 
 and compile_prim1 env op e =
@@ -147,14 +164,16 @@ and compile_prim1 env op e =
   [ IMov (Reg RAX, arg) ]
   @
   match op with
-  | Neg -> [ INeg (Reg RAX) ]
-  | Not -> [ IMov (scratch_reg, bool_mask); IXor (Reg RAX, Reg R11) ]
+  | Neg -> assert_number RAX @ [ INeg (Reg RAX) ]
+  | Not ->
+      assert_boolean RAX
+      @ [ IMov (scratch_reg, bool_mask); IXor (Reg RAX, scratch_reg) ]
+  | Print -> [ IMov (Reg RDI, Reg RAX); ICall "print" ]
 
 and compile_prim2 env op l r tag =
   let l_arg = compile_imm env l in
   let r_arg = compile_imm env r in
-  [ IMov (Reg RAX, l_arg) ]
-  @ [ IMov (scratch_reg, r_arg) ]
+  [ IMov (Reg RAX, l_arg); IMov (scratch_reg, r_arg) ]
   @
   match op with
   | Add -> [ IAdd (Reg RAX, scratch_reg) ]
@@ -186,28 +205,29 @@ and compile_prim2 env op l r tag =
 
 and compile_id env x =
   let offset = Env.find x env in
-  [ IMov (Reg RAX, RegOffset (RSP, -offset)) ]
+  [ IMov (Reg RAX, RegOffset (RBP, -offset)) ]
 
 and compile_let env x e body =
   let env', offset = add x env in
   compile_expr env e
-  @ [ IMov (RegOffset (RSP, -offset), Reg RAX) ]
+  @ [ IMov (RegOffset (RBP, -offset), Reg RAX) ]
   @ compile_expr env' body
 
 and compile_if env cond thn els tag =
   let else_label = "if_else_" ^ string_of_int tag in
   let done_label = "if_done_" ^ string_of_int tag in
   let arg = compile_imm env cond in
-  [
-    IMov (Reg RAX, arg);
-    IMov (scratch_reg, const_false);
-    ICmp (Reg RAX, scratch_reg);
-    IJe else_label;
-  ]
-  @ compile_expr env thn (* Compile then branch *)
+  [ IMov (Reg RAX, arg) ]
+  @ assert_boolean RAX
+  @ [
+      IMov (Reg RAX, arg);
+      IMov (scratch_reg, const_false);
+      ICmp (Reg RAX, scratch_reg);
+      IJe else_label;
+    ]
+  @ compile_expr env thn
   @ [ IJmp done_label; ILabel else_label ]
-  @ compile_expr env els (* Compile else branch *)
-  @ [ ILabel done_label ]
+  @ compile_expr env els @ [ ILabel done_label ]
 
 let compile expr =
   let tagged = tag expr in
@@ -218,12 +238,42 @@ let compile expr =
   let tagged = tag anfed in
   compile_expr Env.empty tagged
 
+let rec count_let (e : 'a expr) : int =
+  (* In ANF form *)
+  match e with
+  | ENumber _ | EBool _ | EId _ -> 0
+  | EPrim1 (_, e, _) -> count_let e (* Should be 0 as we are in ANF *)
+  | EPrim2 (_, l, r, _) ->
+      count_let l + count_let r (* Should be 0 as we are in ANF *)
+  | EIf (cond, thn, els, _) ->
+      count_let cond + max (count_let thn) (count_let els)
+  | ELet (_, e, body, _) -> 1 + max (count_let e) (count_let body)
+
 let compile_to_asm_string (program : 'a program) : string =
   let instrs = compile program in
+  let max_locals = program |> tag |> to_anf |> count_let in
   let asm_string = string_of_asm instrs in
   let prelude =
-    "section .text\n" ^ "global our_code_starts_here\n"
-    ^ "our_code_starts_here:"
+    "section .text\n\
+    \  extern error\n\
+    \  extern print\n\
+    \  global our_code_starts_here\n\n\
+     our_code_starts_here:\n\
+    \  push RBP\n\
+    \  mov RBP, RSP\n\
+    \  sub RSP, 8*" ^ string_of_int max_locals
   in
-  let suffix = "  ret" in
-  prelude ^ "\n" ^ asm_string ^ "\n" ^ suffix
+  let postlude =
+    "  mov RSP, RBP\n\
+    \  pop RBP\n\
+    \  ret\n\
+     error_not_a_number:\n\
+    \  mov RSI, RAX\n\
+    \  mov RDI, 1\n\
+    \  call error\n\
+     error_not_a_boolean:\n\
+    \  mov RSI, RAX\n\
+    \  mov RDI, 2\n\
+    \  call error"
+  in
+  prelude ^ "\n" ^ asm_string ^ "\n" ^ postlude
