@@ -24,6 +24,9 @@ type instruction =
   | IJle of string
   | IJge of string
   | ICmp of arg * arg
+  | IPush of arg
+  | IPop of arg
+  | ICall of string (* TODO: Should this be a string? *)
   | IRet
 
 type asm = instruction list
@@ -69,6 +72,12 @@ let string_of_instruction (instr : instruction) : string =
   | IJge label -> "  jge " ^ label
   | ICmp (arg1, arg2) ->
       "  cmp " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
+  | IPush arg ->
+      "  push " ^ string_of_arg arg
+  | IPop arg ->
+      "  pop " ^ string_of_arg arg
+  | ICall callee ->
+      "  call " ^ callee
   | IRet -> "  ret"
 
 let string_of_asm (asm : asm) : string =
