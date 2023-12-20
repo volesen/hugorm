@@ -12,6 +12,7 @@ const uint64_t ERR_NOT_BOOLEAN = 2;
 
 extern hugorm_val our_code_starts_here() asm("our_code_starts_here");
 void error(uint64_t errCode, hugorm_val val) asm("error");
+hugorm_val print(hugorm_val val) asm("print");
 
 void error(uint64_t errCode, hugorm_val val) {
   if (errCode == ERR_NOT_NUMBER) {

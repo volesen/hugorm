@@ -9,7 +9,7 @@ and 'a expr =
   | ELet of string * 'a expr * 'a expr * 'a
   | EIf of 'a expr * 'a expr * 'a expr * 'a
 
-and prim1 = Neg | Not
+and prim1 = Neg | Not | Print
 
 and prim2 =
   | Add
