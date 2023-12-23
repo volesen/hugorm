@@ -8,12 +8,18 @@ let () =
   (*let expr = EPrim2 (Sub, ENumber (2L, ()), ENumber (1L, ()), ()) in*)
   (*let expr = EPrim2 (And, EBool(false, ()), EBool(true, ()), ()) in*)
   (*let expr = EPrim1 (Not, EBool(false, ()), ()) in*)
-  let expr = EPrim2 (
-      LessEq,
-      ENumber(69L, ()),
-      ENumber(69L, ()),
-      ()
-    )
+  let expr =
+    EIf
+      ( EPrim1
+          ( Neg,
+            EPrim1
+              ( Print,
+                EPrim2 (Greater, ENumber (42L, ()), ENumber (69L, ()), ()),
+                () ),
+            () ),
+        ENumber (24L, ()),
+        ENumber (96L, ()),
+        () )
   in
   let program = Compile.compile_to_asm_string expr in
   (* Write the assembler to a file *)

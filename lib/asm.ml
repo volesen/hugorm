@@ -1,4 +1,10 @@
-type reg = RAX | RSP | R11
+type reg =
+  | RAX
+  | RSP
+  | R11
+  | RDI
+  | RSI 
+  | RBP (* TODO: Systematicall include all x86_64 registers *)
 
 type arg =
   | Const of int64
@@ -23,13 +29,25 @@ type instruction =
   | IJg of string
   | IJle of string
   | IJge of string
+  | IJz of string
+  | IJnz of string
   | ICmp of arg * arg
+  | IPush of arg
+  | IPop of arg
+  | ICall of string (* TODO: Should this be a string? *)
+  | ITest of arg * arg
   | IRet
 
 type asm = instruction list
 
 let string_of_reg (reg : reg) : string =
-  match reg with RAX -> "RAX" | RSP -> "RSP" | R11 -> "R11"
+  match reg with
+  | RAX -> "RAX"
+  | RSP -> "RSP"
+  | R11 -> "R11"
+  | RDI -> "RDI"
+  | RSI -> "RSI"
+  | RBP -> "RBP"
 
 let string_of_arg (arg : arg) : string =
   match arg with
@@ -67,8 +85,15 @@ let string_of_instruction (instr : instruction) : string =
   | IJg label -> "  jg " ^ label
   | IJle label -> "  jle " ^ label
   | IJge label -> "  jge " ^ label
+  | IJz label -> "  jz " ^ label
+  | IJnz label -> "  jnz " ^ label
   | ICmp (arg1, arg2) ->
       "  cmp " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
+  | IPush arg -> "  push " ^ string_of_arg arg
+  | IPop arg -> "  pop " ^ string_of_arg arg
+  | ICall callee -> "  call " ^ callee
+  | ITest (arg1, arg2) ->
+      "  test " ^ string_of_arg arg1 ^ ", " ^ string_of_arg arg2
   | IRet -> "  ret"
 
 let string_of_asm (asm : asm) : string =
