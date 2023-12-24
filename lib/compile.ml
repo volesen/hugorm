@@ -129,14 +129,14 @@ let assert_number reg =
     IMov (scratch_reg, bool_tag);
     ITest (Reg reg, scratch_reg);
     (* We only have two types. If it is not a boolean, it must tbe number *)
-    IJnz "error_not_a_number";
+    IJnz "err_not_a_number";
   ]
 
 let assert_boolean reg =
   [
     IMov (scratch_reg, bool_tag);
     ITest (Reg reg, scratch_reg);
-    IJz "error_not_a_boolean";
+    IJz "err_not_a_boolean";
   ]
 
 let rec compile_expr (env : env) (expr : tag expr) : asm =
@@ -229,15 +229,6 @@ and compile_if env cond thn els tag =
   @ [ IJmp done_label; ILabel else_label ]
   @ compile_expr env els @ [ ILabel done_label ]
 
-let compile expr =
-  let tagged = tag expr in
-  let renamed = rename tagged in
-  let anfed = tag (to_anf renamed) in
-  let _ = assert (is_anf anfed) in
-  (* Re-tag after ANF conversion *)
-  let tagged = tag anfed in
-  compile_expr Env.empty tagged
-
 let rec count_let (e : 'a expr) : int =
   (* In ANF form *)
   match e with
@@ -249,31 +240,47 @@ let rec count_let (e : 'a expr) : int =
       count_let cond + max (count_let thn) (count_let els)
   | ELet (_, e, body, _) -> 1 + max (count_let e) (count_let body)
 
-let compile_to_asm_string (program : 'a program) : string =
-  let instrs = compile program in
-  let max_locals = program |> tag |> to_anf |> count_let in
-  let asm_string = string_of_asm instrs in
+let error_handler label err_code =
+  [
+    ILabel label;
+    IMov (Reg RSI, Reg RAX);
+    IMov (Reg RDI, Const err_code);
+    ICall "error";
+  ]
+
+let align n alignment =
+  let remainder = n mod alignment in
+  if remainder = 0 then n else n + alignment - remainder
+
+let stack_align n = align n 16
+
+let compile_to_asm_string (expr : 'a expr) : string =
+  let tagged = tag expr in
+  let renamed = rename tagged in
+  let anfed = tag (to_anf renamed) in
+  let _ = assert (is_anf anfed) in
+  (* Count let-bindings to allocate stack frame size *)
+  let max_locals = count_let anfed in
+  let stack_size = stack_align (max_locals * 8) in
+  (* Re-tag after ANF conversion *)
+  let tagged = tag anfed in
+  let body = compile_expr Env.empty tagged in
   let prelude =
-    "section .text\n\
-    \  extern error\n\
-    \  extern print\n\
-    \  global our_code_starts_here\n\n\
-     our_code_starts_here:\n\
-    \  push RBP\n\
-    \  mov RBP, RSP\n\
-    \  sub RSP, 8*" ^ string_of_int max_locals
+    [
+      ISection "text";
+      IExtern "error";
+      IExtern "print";
+      IGlobal "our_code_starts_here";
+      ILabel "our_code_starts_here";
+      IPush (Reg RBX);
+      IMov (Reg RBP, Reg RSP);
+      ISub (Reg RSP, Const (Int64.of_int stack_size));
+    ]
   in
-  let postlude =
-    "  mov RSP, RBP\n\
-    \  pop RBP\n\
-    \  ret\n\
-     error_not_a_number:\n\
-    \  mov RSI, RAX\n\
-    \  mov RDI, 1\n\
-    \  call error\n\
-     error_not_a_boolean:\n\
-    \  mov RSI, RAX\n\
-    \  mov RDI, 2\n\
-    \  call error"
+  let postlude = [ IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet ] in
+  let asm =
+    prelude @ body @ postlude
+    @ error_handler "err_not_a_number" 1L
+    @ error_handler "err_not_a_boolean" 2L
   in
-  prelude ^ "\n" ^ asm_string ^ "\n" ^ postlude
+  string_of_asm asm
