@@ -8,8 +8,9 @@ and 'a expr =
   | EId of string * 'a
   | ELet of string * 'a expr * 'a expr * 'a
   | EIf of 'a expr * 'a expr * 'a expr * 'a
+  | EApp of string * 'a expr list * 'a
 
-and prim1 = Neg | Not | Print
+and prim1 = Neg | Not
 
 and prim2 =
   | Add

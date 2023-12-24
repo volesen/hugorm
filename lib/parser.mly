@@ -24,6 +24,8 @@
 %token GT
 %token GTE
 
+%token COMMA
+
 %token LEFT_PAREN
 %token RIGHT_PAREN
 
@@ -58,6 +60,7 @@ expr:
   | IF; cond=expr; THEN; thn=expr; ELSE; els=expr { EIf(cond, thn, els, ()) }
   | op=prim1; e=expr; { EPrim1(op, e, ()) }
   | l=expr; op=prim2; r=expr { EPrim2(op, l, r, ()) }
+  | f=ID; LEFT_PAREN; args=separated_list(COMMA, expr); RIGHT_PAREN { EApp(f, args, ()) }
 
 %inline prim1:
   | MINUS { Neg }

@@ -19,7 +19,7 @@ type reg64 =
 type arg =
   | Const of int64
   | Reg of reg64
-  | RegOffset of reg64 * int (* [reg + 8 * i] *)
+  | RegOffset of reg64 * int (* [reg + i] *)
 
 type instruction =
   (* Directives *)
@@ -88,7 +88,7 @@ let string_of_arg (arg : arg) : string =
   | Const int -> Int64.to_string int
   | Reg reg -> string_of_reg reg
   | RegOffset (reg, offset) ->
-      Format.sprintf "[%s%+d]" (string_of_reg reg) (offset * reg64_size_bytes)
+      Format.sprintf "[%s%+d]" (string_of_reg reg) offset
 
 let string_of_instruction (instr : instruction) : string =
   let string_of_unary_op op arg =

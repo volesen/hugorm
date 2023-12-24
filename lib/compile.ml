@@ -15,13 +15,7 @@ let err_integer_overflow = "Error: Integer overflow"
 
 module Env = Map.Make (String)
 
-type offset = int
-and env = int Env.t
-
-let add x env =
-  let offset = Env.cardinal env + 1 in
-  (Env.add x offset env, offset)
-
+type env = int Env.t
 type tag = int
 
 let tag (e : 'a expr) : tag expr =
@@ -46,6 +40,15 @@ let tag (e : 'a expr) : tag expr =
         let thn, cur = tag' thn cur in
         let els, cur = tag' els cur in
         (EIf (cond, thn, els, cur), cur + 1)
+    | EApp (f, args, _) ->
+        let args, cur =
+          List.fold_left
+            (fun (args, cur) arg ->
+              let arg, cur = tag' arg cur in
+              (args @ [ arg ], cur))
+            ([], cur) args
+        in
+        (EApp (f, args, cur), cur + 1)
   in
   let tagged, _ = tag' e 1 in
   tagged
@@ -66,6 +69,7 @@ let rename (e : tag expr) : tag expr =
         let env' = Env.add x x' env in
         (* Disallow recursion in the bind for now *)
         ELet (x', rename' env e, rename' env' body, tag)
+    | EApp (f, args, tag) -> EApp (f, List.map (rename' env) args, tag)
   in
   rename' Env.empty e
 
@@ -73,16 +77,17 @@ let rename (e : tag expr) : tag expr =
 let is_imm expr =
   match expr with
   | ENumber _ | EBool _ | EId _ -> true
-  | EPrim1 _ | EPrim2 _ | ELet _ | EIf _ -> false
+  | EPrim1 _ | EPrim2 _ | ELet _ | EIf _ | EApp _ -> false
 
 (* Are all operands are immediate? *)
 let rec is_anf expr =
   match expr with
+  | ENumber _ | EBool _ | EId _ -> true
   | EPrim1 (_, e, _) -> is_imm e
   | EPrim2 (_, l, r, _) -> is_imm l && is_imm r
   | ELet (_, e, body, _) -> is_anf e && is_anf body
   | EIf (cond, thn, els, _) -> is_imm cond && is_anf thn && is_anf els
-  | e -> is_imm e
+  | EApp (_, args, _) -> List.for_all is_imm args
 
 (** [mk_let expr bindings] encloses [expr] in nested let bindings *)
 let mk_let expr bindings =
@@ -120,6 +125,16 @@ let to_anf expr =
                   (cond_imm, mk_let thn_imm thn_ctx, mk_let els_imm els_ctx, ())
               );
             ] )
+    | EApp (f, args, tag) ->
+        let args_imm, args_ctx =
+          List.fold_left
+            (fun (args_imm, args_ctx) arg ->
+              let arg_imm, arg_ctx = to_anf' arg in
+              (args_imm @ [ arg_imm ], args_ctx @ arg_ctx))
+            ([], []) args
+        in
+        let tmp = "$" ^ string_of_int tag in
+        (EId (tmp, ()), args_ctx @ [ (tmp, EApp (f, args_imm, ())) ])
   in
   let imm, ctx = to_anf' expr in
   mk_let imm ctx
@@ -139,15 +154,33 @@ let assert_boolean reg =
     IJz "err_not_a_boolean";
   ]
 
-let rec compile_expr (env : env) (expr : tag expr) : asm =
-  match expr with
-  | (ENumber _ | EBool _ | EId _) as e -> [ IMov (Reg RAX, compile_imm env e) ]
-  | EPrim1 (op, e, _) -> compile_prim1 env op e
-  | EPrim2 (op, l, r, tag) -> compile_prim2 env op l r tag
-  | ELet (x, e, body, _) -> compile_let env x e body
-  | EIf (cond, thn, els, tag) -> compile_if env cond thn els tag
+let split_n n lst =
+  let rec loop n acc lst =
+    if n = 0 then (List.rev acc, lst)
+    else
+      match lst with
+      | [] -> failwith err_unreachable
+      | x :: xs -> loop (n - 1) (x :: acc) xs
+  in
+  loop n [] lst
 
-and compile_imm env e =
+let align n alignment =
+  let remainder = n mod alignment in
+  if remainder = 0 then n else n + alignment - remainder
+
+let stack_align n = align n 16
+
+let rec compile_expr (env : env) (stack_index : int) (expr : tag expr) : asm =
+  match expr with
+  | (ENumber _ | EBool _ | EId _) as e ->
+      [ IMov (Reg RAX, compile_imm env stack_index e) ]
+  | EPrim1 (op, e, _) -> compile_prim1 env stack_index op e
+  | EPrim2 (op, l, r, tag) -> compile_prim2 env stack_index op l r tag
+  | ELet (x, e, body, _) -> compile_let env stack_index x e body
+  | EIf (cond, thn, els, tag) -> compile_if env stack_index cond thn els tag
+  | EApp (f, args, _) -> compile_app env stack_index f args
+
+and compile_imm env _ e =
   match e with
   | ENumber (n, _) ->
       if n > max_int || n < min_int then failwith err_integer_overflow
@@ -155,12 +188,12 @@ and compile_imm env e =
   | EBool (true, _) -> const_true
   | EBool (false, _) -> const_false
   | EId (x, _) ->
-      let offset = Env.find x env in
-      RegOffset (RBP, -offset)
+      let slot = Env.find x env in
+      RegOffset (RBP, slot)
   | _ -> failwith err_unreachable
 
-and compile_prim1 env op e =
-  let arg = compile_imm env e in
+and compile_prim1 env stack_index op e =
+  let arg = compile_imm env stack_index e in
   [ IMov (Reg RAX, arg) ]
   @
   match op with
@@ -168,11 +201,10 @@ and compile_prim1 env op e =
   | Not ->
       assert_boolean RAX
       @ [ IMov (scratch_reg, bool_mask); IXor (Reg RAX, scratch_reg) ]
-  | Print -> [ IMov (Reg RDI, Reg RAX); ICall "print" ]
 
-and compile_prim2 env op l r tag =
-  let l_arg = compile_imm env l in
-  let r_arg = compile_imm env r in
+and compile_prim2 env stack_index op l r tag =
+  let l_arg = compile_imm env stack_index l in
+  let r_arg = compile_imm env stack_index r in
   [ IMov (Reg RAX, l_arg); IMov (scratch_reg, r_arg) ]
   @
   match op with
@@ -203,20 +235,21 @@ and compile_prim2 env op l r tag =
         ILabel cmp_fail;
       ]
 
-and compile_id env x =
-  let offset = Env.find x env in
-  [ IMov (Reg RAX, RegOffset (RBP, -offset)) ]
+and compile_id env _ x =
+  let slot = Env.find x env in
+  [ IMov (Reg RAX, RegOffset (RBP, slot)) ]
 
-and compile_let env x e body =
-  let env', offset = add x env in
-  compile_expr env e
-  @ [ IMov (RegOffset (RBP, -offset), Reg RAX) ]
-  @ compile_expr env' body
+and compile_let env stack_index x e body =
+  let stack_index' = stack_index - reg64_size_bytes in
+  let env' = Env.add x stack_index' env in
+  compile_expr env stack_index e
+  @ [ IMov (RegOffset (RBP, stack_index'), Reg RAX) ]
+  @ compile_expr env' stack_index' body
 
-and compile_if env cond thn els tag =
+and compile_if env stack_index cond thn els tag =
   let else_label = "if_else_" ^ string_of_int tag in
   let done_label = "if_done_" ^ string_of_int tag in
-  let arg = compile_imm env cond in
+  let arg = compile_imm env stack_index cond in
   [ IMov (Reg RAX, arg) ]
   @ assert_boolean RAX
   @ [
@@ -225,20 +258,56 @@ and compile_if env cond thn els tag =
       ICmp (Reg RAX, scratch_reg);
       IJe else_label;
     ]
-  @ compile_expr env thn
+  @ compile_expr env stack_index thn
   @ [ IJmp done_label; ILabel else_label ]
-  @ compile_expr env els @ [ ILabel done_label ]
+  @ compile_expr env stack_index els
+  @ [ ILabel done_label ]
 
+and compile_app env stack_index f args =
+  let reg_args, stack_args = split_n 6 args in
+  (* The first 6 arguments are passed in registers *)
+  let mov_reg_args =
+    List.mapi
+      (fun i arg ->
+        let reg = List.nth arg_passing_regs i in
+        let arg = compile_imm env stack_index arg in
+        IMov (Reg reg, arg))
+      reg_args
+  in
+  (* The rest are passed on the stack (in reverse order) *)
+  let push_stack_args =
+    List.rev_map
+      (fun arg ->
+        let arg = compile_imm env stack_index arg in
+        IPush arg)
+      stack_args
+  in
+  (* We need to align the stack to 16 bytes before calling *)
+  (* TODO: Quick and dirty. Probably use `sub RSP, padding` *)
+  let push_stack_args =
+    if List.length push_stack_args mod 2 = 0 then push_stack_args
+    else push_stack_args @ [ IPush (Reg RAX) ]
+  in
+  let pop_stack_args =
+    [
+      IAdd
+        ( Reg RSP,
+          Const (Int64.of_int (reg64_size_bytes * List.length push_stack_args))
+        );
+    ]
+  in
+  mov_reg_args @ push_stack_args @ [ ICall f ] @ pop_stack_args
+
+(* [count_let e] returns t  he deepest nesting of let-bindings in [e] *)
 let rec count_let (e : 'a expr) : int =
-  (* In ANF form *)
   match e with
   | ENumber _ | EBool _ | EId _ -> 0
-  | EPrim1 (_, e, _) -> count_let e (* Should be 0 as we are in ANF *)
-  | EPrim2 (_, l, r, _) ->
-      count_let l + count_let r (* Should be 0 as we are in ANF *)
+  | EPrim1 (_, e, _) -> count_let e
+  | EPrim2 (_, l, r, _) -> max (count_let l) (count_let r)
+  | ELet (_, e, body, _) -> max (count_let e) (1 + count_let body)
   | EIf (cond, thn, els, _) ->
-      count_let cond + max (count_let thn) (count_let els)
-  | ELet (_, e, body, _) -> 1 + max (count_let e) (count_let body)
+      max (count_let cond) (max (count_let thn) (count_let els))
+  | EApp (_, args, _) -> List.fold_left max 0 (List.map count_let args)
 
 let error_handler label err_code =
   [
@@ -248,12 +317,6 @@ let error_handler label err_code =
     ICall "error";
   ]
 
-let align n alignment =
-  let remainder = n mod alignment in
-  if remainder = 0 then n else n + alignment - remainder
-
-let stack_align n = align n 16
-
 let compile_to_asm_string (expr : 'a expr) : string =
   let tagged = tag expr in
   let renamed = rename tagged in
@@ -261,10 +324,10 @@ let compile_to_asm_string (expr : 'a expr) : string =
   let _ = assert (is_anf anfed) in
   (* Count let-bindings to allocate stack frame size *)
   let max_locals = count_let anfed in
-  let stack_size = stack_align (max_locals * 8) in
+  let stack_frame_size = stack_align (max_locals * reg64_size_bytes) in
   (* Re-tag after ANF conversion *)
   let tagged = tag anfed in
-  let body = compile_expr Env.empty tagged in
+  let body = compile_expr Env.empty 0 tagged in
   let prelude =
     [
       ISection "text";
@@ -274,7 +337,7 @@ let compile_to_asm_string (expr : 'a expr) : string =
       ILabel "our_code_starts_here";
       IPush (Reg RBX);
       IMov (Reg RBP, Reg RSP);
-      ISub (Reg RSP, Const (Int64.of_int stack_size));
+      ISub (Reg RSP, Const (Int64.of_int stack_frame_size));
     ]
   in
   let postlude = [ IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet ] in

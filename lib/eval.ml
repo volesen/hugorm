@@ -44,9 +44,6 @@ and eval_prim1 env op e =
   match (op, eval env e) with
   | Neg, VInt n -> VInt (Int64.neg n)
   | Not, VBool b -> VBool (not b)
-  | Print, v ->
-      let _ = print_endline (string_of_value v) in
-      v
   | _ -> failwith err_type_mismatch
 
 and eval_prim2 env op l r =
