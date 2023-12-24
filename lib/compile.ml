@@ -168,7 +168,6 @@ and compile_prim1 env op e =
   | Not ->
       assert_boolean RAX
       @ [ IMov (scratch_reg, bool_mask); IXor (Reg RAX, scratch_reg) ]
-  | Print -> [ IMov (Reg RDI, Reg RAX); ICall "print" ]
 
 and compile_prim2 env op l r tag =
   let l_arg = compile_imm env l in

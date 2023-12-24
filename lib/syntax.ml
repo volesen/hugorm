@@ -10,7 +10,7 @@ and 'a expr =
   | EIf of 'a expr * 'a expr * 'a expr * 'a
   | EApp of string * 'a expr list * 'a
 
-and prim1 = Neg | Not | Print
+and prim1 = Neg | Not
 
 and prim2 =
   | Add
