@@ -1,4 +1,8 @@
-type 'a program = 'a expr
+type 'a program =
+  | Program of 'a decl list * 'a expr
+
+and 'a decl =
+  | DFun of string * string list * 'a expr * 'a
 
 and 'a expr =
   | ENumber of int64 * 'a

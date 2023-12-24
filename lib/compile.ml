@@ -317,7 +317,7 @@ let error_handler label err_code =
     ICall "error";
   ]
 
-let compile_to_asm_string (expr : 'a expr) : string =
+let compile (expr : 'a expr) : asm =
   let tagged = tag expr in
   let renamed = rename tagged in
   let anfed = tag (to_anf renamed) in
@@ -341,9 +341,6 @@ let compile_to_asm_string (expr : 'a expr) : string =
     ]
   in
   let postlude = [ IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet ] in
-  let asm =
     prelude @ body @ postlude
     @ error_handler "err_not_a_number" 1L
     @ error_handler "err_not_a_boolean" 2L
-  in
-  string_of_asm asm

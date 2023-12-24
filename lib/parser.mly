@@ -40,7 +40,7 @@
 
 %start program
 
-%type <unit program> program
+%type <unit expr> program
 %type <unit expr> expr
 %type <prim1> prim1
 %type <prim2> prim2
