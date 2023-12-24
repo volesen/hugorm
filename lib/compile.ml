@@ -261,7 +261,8 @@ and compile_if env cond thn els tag =
   @ compile_expr env els @ [ ILabel done_label ]
 
 and compile_app env f args =
-  (* TODO: Stack alignment and > 6 arguments*)
+  (* TODO: > 6 arguments*)
+  (* TODO: Save caller-saved registers *)
   let arg_movs =
     List.mapi
       (fun i arg ->
@@ -272,15 +273,16 @@ and compile_app env f args =
   in
   arg_movs @ [ ICall f ]
 
+(* [count_let e] returns the deepest nesting of let-bindings in [e] *)
 let rec count_let (e : 'a expr) : int =
-  (* We are in ANF form. There are not let-bindings in immediate expressions *)
   match e with
   | ENumber _ | EBool _ | EId _ -> 0
   | EPrim1 (_, e, _) -> count_let e
-  | EPrim2 (_, l, r, _) -> count_let l + count_let r
+  | EPrim2 (_, l, r, _) -> max (count_let l) (count_let r)
+  | ELet (_, e, body, _) -> max (count_let e) (1 + count_let body)
   | EIf (cond, thn, els, _) ->
-      count_let cond + max (count_let thn) (count_let els)
-  | ELet (_, e, body, _) -> 1 + max (count_let e) (count_let body)
+      max (count_let cond) (max (count_let thn) (count_let els))
+  | EApp (_, args, _) -> List.fold_left max 0 (List.map count_let args)
 
 let error_handler label err_code =
   [
