@@ -26,8 +26,9 @@
 %token GT
 %token GTE
 
-%token COLON
 %token COMMA
+%token COLON
+%token SEMI_COLON
 
 %token LEFT_PAREN
 %token RIGHT_PAREN
@@ -45,17 +46,19 @@
 
 %type <unit program> program
 %type <unit decl> decl
+%type <string list> params
 %type <unit expr> expr
+%type <unit expr list> args
 %type <prim1> prim1
 %type <prim2> prim2
 
 %%
 
 program:
-  | decls=list(decl); body=expr { Program(decls, body) }
+  | decls=list(decl); body=expr; EOF { Program(decls, body) }
 
 decl:
-  | DEF; f=ID; params=params; COLON; body=expr { DFun(f, params, body, ()) }
+  | DEF; f=ID; params=params; COLON; body=expr; SEMI_COLON { DFun(f, params, body, ()) }
 
 params:
   | LEFT_PAREN; params=separated_list(COMMA, ID); RIGHT_PAREN { params }
