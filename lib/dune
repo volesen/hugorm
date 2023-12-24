@@ -1,5 +1,6 @@
 (library
- (name hugorm))
+ (name hugorm)
+ (libraries core))
 
 (ocamllex lexer)
 

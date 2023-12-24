@@ -26,6 +26,7 @@ rule read =
   | "else"   { ELSE }
   | "let"    { LET }
   | "in"     { IN }
+  | "def"    { DEF }
   | '+'      { PLUS }
   | '-'      { MINUS }
   | '*'      { STAR }
@@ -35,6 +36,7 @@ rule read =
   | '>'      { GT }
   | ">="     { GTE }
   | ','      { COMMA }
+  | ':'      { COLON }
   | '('      { LEFT_PAREN }
   | ')'      { RIGHT_PAREN }
   | id       { ID (Lexing.lexeme lexbuf) }
