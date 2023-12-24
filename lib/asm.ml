@@ -1,10 +1,20 @@
 type reg =
-  | RAX
-  | RSP
-  | R11
+  | RAX (* Return value *)
+  | RBX
+  | RCX
+  | RDX
   | RDI
-  | RSI 
-  | RBP (* TODO: Systematicall include all x86_64 registers *)
+  | RSI
+  | RBP (* Base pointer *)
+  | RSP (* Stack pointer *)
+  | R8
+  | R9
+  | R10
+  | R11
+  | R12
+  | R13
+  | R14
+  | R15
 
 type arg =
   | Const of int64
@@ -34,20 +44,34 @@ type instruction =
   | ICmp of arg * arg
   | IPush of arg
   | IPop of arg
-  | ICall of string (* TODO: Should this be a string? *)
+  | ICall of string
   | ITest of arg * arg
   | IRet
 
 type asm = instruction list
 
+let caller_saved_regs = [ RAX; RCX; RDX; RDI; RSI; RSP; R8; R9; R10; R11; R12 ]
+let callee_saved_regs = [ RBX; RBP; R12; R13; R14; R15 ]
+let arg_passing_regs = [ RDI; RSI; RDX; RCX; R8; R9 ]
+
 let string_of_reg (reg : reg) : string =
   match reg with
   | RAX -> "RAX"
-  | RSP -> "RSP"
-  | R11 -> "R11"
+  | RBX -> "RBX"
+  | RCX -> "RCX"
+  | RDX -> "RDX"
   | RDI -> "RDI"
   | RSI -> "RSI"
   | RBP -> "RBP"
+  | RSP -> "RSP"
+  | R8  -> "R8"
+  | R9  -> "R9"
+  | R10 -> "R10"
+  | R11 -> "R11"
+  | R12 -> "R12"
+  | R13 -> "R13"
+  | R14 -> "R14"
+  | R15 -> "R15"
 
 let string_of_arg (arg : arg) : string =
   match arg with
