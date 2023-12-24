@@ -160,6 +160,16 @@ let assert_boolean reg =
     IJz "err_not_a_boolean";
   ]
 
+let split_n n lst =
+  let rec loop n acc lst =
+    if n = 0 then (List.rev acc, lst)
+    else
+      match lst with
+      | [] -> failwith err_unreachable
+      | x :: xs -> loop (n - 1) (x :: acc) xs
+  in
+  loop n [] lst
+
 let rec compile_expr (env : env) (expr : tag expr) : asm =
   match expr with
   | (ENumber _ | EBool _ | EId _) as e -> [ IMov (Reg RAX, compile_imm env e) ]
@@ -167,6 +177,7 @@ let rec compile_expr (env : env) (expr : tag expr) : asm =
   | EPrim2 (op, l, r, tag) -> compile_prim2 env op l r tag
   | ELet (x, e, body, _) -> compile_let env x e body
   | EIf (cond, thn, els, tag) -> compile_if env cond thn els tag
+  | EApp (f, args, _) -> compile_app env f args
 
 and compile_imm env e =
   match e with
@@ -249,13 +260,24 @@ and compile_if env cond thn els tag =
   @ [ IJmp done_label; ILabel else_label ]
   @ compile_expr env els @ [ ILabel done_label ]
 
+and compile_app env f args =
+  (* TODO: Stack alignment and > 6 arguments*)
+  let arg_movs =
+    List.mapi
+      (fun i arg ->
+        let arg_imm = compile_imm env arg in
+        let arg_reg = List.nth arg_passing_regs i in
+        IMov (Reg arg_reg, arg_imm))
+      args
+  in
+  arg_movs @ [ ICall f ]
+
 let rec count_let (e : 'a expr) : int =
-  (* In ANF form *)
+  (* We are in ANF form. There are not let-bindings in immediate expressions *)
   match e with
   | ENumber _ | EBool _ | EId _ -> 0
-  | EPrim1 (_, e, _) -> count_let e (* Should be 0 as we are in ANF *)
-  | EPrim2 (_, l, r, _) ->
-      count_let l + count_let r (* Should be 0 as we are in ANF *)
+  | EPrim1 (_, e, _) -> count_let e
+  | EPrim2 (_, l, r, _) -> count_let l + count_let r
   | EIf (cond, thn, els, _) ->
       count_let cond + max (count_let thn) (count_let els)
   | ELet (_, e, body, _) -> 1 + max (count_let e) (count_let body)
