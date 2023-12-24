@@ -34,6 +34,7 @@ rule read =
   | "<="     { LTE }
   | '>'      { GT }
   | ">="     { GTE }
+  | ','      { COMMA }
   | '('      { LEFT_PAREN }
   | ')'      { RIGHT_PAREN }
   | id       { ID (Lexing.lexeme lexbuf) }
