@@ -15,13 +15,7 @@ let err_integer_overflow = "Error: Integer overflow"
 
 module Env = Map.Make (String)
 
-type offset = int
-and env = int Env.t
-
-let add x env =
-  let offset = Env.cardinal env + 1 in
-  (Env.add x offset env, offset)
-
+type env = int Env.t
 type tag = int
 
 let tag (e : 'a expr) : tag expr =
@@ -170,16 +164,17 @@ let split_n n lst =
   in
   loop n [] lst
 
-let rec compile_expr (env : env) (expr : tag expr) : asm =
+let rec compile_expr (env : env) (stack_index : int) (expr : tag expr) : asm =
   match expr with
-  | (ENumber _ | EBool _ | EId _) as e -> [ IMov (Reg RAX, compile_imm env e) ]
-  | EPrim1 (op, e, _) -> compile_prim1 env op e
-  | EPrim2 (op, l, r, tag) -> compile_prim2 env op l r tag
-  | ELet (x, e, body, _) -> compile_let env x e body
-  | EIf (cond, thn, els, tag) -> compile_if env cond thn els tag
-  | EApp (f, args, _) -> compile_app env f args
+  | (ENumber _ | EBool _ | EId _) as e ->
+      [ IMov (Reg RAX, compile_imm env stack_index e) ]
+  | EPrim1 (op, e, _) -> compile_prim1 env stack_index op e
+  | EPrim2 (op, l, r, tag) -> compile_prim2 env stack_index op l r tag
+  | ELet (x, e, body, _) -> compile_let env stack_index x e body
+  | EIf (cond, thn, els, tag) -> compile_if env stack_index cond thn els tag
+  | EApp (f, args, _) -> compile_app env stack_index f args
 
-and compile_imm env e =
+and compile_imm env _ e =
   match e with
   | ENumber (n, _) ->
       if n > max_int || n < min_int then failwith err_integer_overflow
@@ -191,8 +186,8 @@ and compile_imm env e =
       RegOffset (RBP, -offset)
   | _ -> failwith err_unreachable
 
-and compile_prim1 env op e =
-  let arg = compile_imm env e in
+and compile_prim1 env stack_index op e =
+  let arg = compile_imm env stack_index e in
   [ IMov (Reg RAX, arg) ]
   @
   match op with
@@ -201,9 +196,9 @@ and compile_prim1 env op e =
       assert_boolean RAX
       @ [ IMov (scratch_reg, bool_mask); IXor (Reg RAX, scratch_reg) ]
 
-and compile_prim2 env op l r tag =
-  let l_arg = compile_imm env l in
-  let r_arg = compile_imm env r in
+and compile_prim2 env stack_index op l r tag =
+  let l_arg = compile_imm env stack_index l in
+  let r_arg = compile_imm env stack_index r in
   [ IMov (Reg RAX, l_arg); IMov (scratch_reg, r_arg) ]
   @
   match op with
@@ -234,20 +229,21 @@ and compile_prim2 env op l r tag =
         ILabel cmp_fail;
       ]
 
-and compile_id env x =
+and compile_id env _ x =
   let offset = Env.find x env in
   [ IMov (Reg RAX, RegOffset (RBP, -offset)) ]
 
-and compile_let env x e body =
-  let env', offset = add x env in
-  compile_expr env e
-  @ [ IMov (RegOffset (RBP, -offset), Reg RAX) ]
-  @ compile_expr env' body
+and compile_let env stack_index x e body =
+  let stack_index' = stack_index + reg64_size_bytes in
+  let env' = Env.add x stack_index' env in
+  compile_expr env stack_index e
+  @ [ IMov (RegOffset (RBP, -stack_index'), Reg RAX) ]
+  @ compile_expr env' stack_index' body
 
-and compile_if env cond thn els tag =
+and compile_if env stack_index cond thn els tag =
   let else_label = "if_else_" ^ string_of_int tag in
   let done_label = "if_done_" ^ string_of_int tag in
-  let arg = compile_imm env cond in
+  let arg = compile_imm env stack_index cond in
   [ IMov (Reg RAX, arg) ]
   @ assert_boolean RAX
   @ [
@@ -256,17 +252,18 @@ and compile_if env cond thn els tag =
       ICmp (Reg RAX, scratch_reg);
       IJe else_label;
     ]
-  @ compile_expr env thn
+  @ compile_expr env stack_index thn
   @ [ IJmp done_label; ILabel else_label ]
-  @ compile_expr env els @ [ ILabel done_label ]
+  @ compile_expr env stack_index els
+  @ [ ILabel done_label ]
 
-and compile_app env f args =
+and compile_app env stack_index f args =
   (* TODO: > 6 arguments*)
   (* TODO: Save caller-saved registers *)
   let arg_movs =
     List.mapi
       (fun i arg ->
-        let arg_imm = compile_imm env arg in
+        let arg_imm = compile_imm env stack_index arg in
         let arg_reg = List.nth arg_passing_regs i in
         IMov (Reg arg_reg, arg_imm))
       args
@@ -308,7 +305,7 @@ let compile_to_asm_string (expr : 'a expr) : string =
   let stack_size = stack_align (max_locals * 8) in
   (* Re-tag after ANF conversion *)
   let tagged = tag anfed in
-  let body = compile_expr Env.empty tagged in
+  let body = compile_expr Env.empty 0 tagged in
   let prelude =
     [
       ISection "text";
