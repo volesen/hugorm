@@ -11,13 +11,13 @@ let test_compile_num () =
   Alcotest.(check asm)
     "Compile `Num`"
     [ IMov (Reg RAX, Const 84L) ]
-    (Compile.compile_expr Env.empty (ENumber (42L, 1)))
+    (Compile.compile_expr Env.empty 0 (ENumber (42L, 1)))
 
 let test_compile_add1 () =
   Alcotest.(check asm)
     "Compile `Add1`"
     [ IMov (Reg RAX, Const 84L); INeg (Reg RAX) ]
-    (Compile.compile_expr Env.empty (EPrim1 (Neg, ENumber (42L, 1), 2)))
+    (Compile.compile_expr Env.empty  0 (EPrim1 (Neg, ENumber (42L, 1), 2)))
 
 let test_count_let_imm () =
   Alcotest.(check int)
