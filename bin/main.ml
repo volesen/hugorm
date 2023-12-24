@@ -1,30 +1,15 @@
 open Printf
 open Hugorm
-open Hugorm.Syntax
 
 let () =
-  (*let expr = EBool (true, ()) in *)
-  (*let expr = ENumber (3L, ()) in*)
-  (*let expr = EPrim2 (Sub, ENumber (2L, ()), ENumber (1L, ()), ()) in*)
-  (*let expr = EPrim2 (And, EBool(false, ()), EBool(true, ()), ()) in*)
-  (*let expr = EPrim1 (Not, EBool(false, ()), ()) in*)
-  let expr =
-    EIf
-      ( EPrim1
-          ( Neg,
-            EPrim1
-              ( Print,
-                EPrim2 (Greater, ENumber (42L, ()), ENumber (69L, ()), ()),
-                () ),
-            () ),
-        ENumber (24L, ()),
-        ENumber (96L, ()),
-        () )
-  in
-  let program = Compile.compile_to_asm_string expr in
+  (* Quick and dirty*)
+  let input_filename = Sys.argv.(1) in
+  let ast = Lex_and_parse.parse_file input_filename in
+  let asm_string = Compile.compile_to_asm_string ast in
+
   (* Write the assembler to a file *)
   let oc = open_out "out/a.s" in
-  fprintf oc "%s" program;
+  fprintf oc "%s" asm_string;
   close_out oc;
 
   (* Assemble out.s to out.o *)
