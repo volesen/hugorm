@@ -26,6 +26,7 @@ let rec eval (env : env) (e : 'a expr) : value =
   | EId (x, _) -> eval_id env x
   | ELet (x, e1, e2, _) -> eval_let env x e1 e2
   | EIf (cond, thn, els, _) -> eval_if env cond thn els
+  | EApp _ -> failwith "TODO"
 
 and eval_id env x =
   match Env.find_opt x env with Some v -> v | None -> failwith err_unbound_var
