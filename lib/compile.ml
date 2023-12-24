@@ -164,6 +164,12 @@ let split_n n lst =
   in
   loop n [] lst
 
+let align n alignment =
+  let remainder = n mod alignment in
+  if remainder = 0 then n else n + alignment - remainder
+
+let stack_align n = align n 16
+
 let rec compile_expr (env : env) (stack_index : int) (expr : tag expr) : asm =
   match expr with
   | (ENumber _ | EBool _ | EId _) as e ->
@@ -258,19 +264,41 @@ and compile_if env stack_index cond thn els tag =
   @ [ ILabel done_label ]
 
 and compile_app env stack_index f args =
-  (* TODO: > 6 arguments*)
-  (* TODO: Save caller-saved registers *)
-  let arg_movs =
+  let reg_args, stack_args = split_n 6 args in
+  (* The first 6 arguments are passed in registers *)
+  let mov_reg_args =
     List.mapi
       (fun i arg ->
-        let arg_imm = compile_imm env stack_index arg in
-        let arg_reg = List.nth arg_passing_regs i in
-        IMov (Reg arg_reg, arg_imm))
-      args
+        let reg = List.nth arg_passing_regs i in
+        let arg = compile_imm env stack_index arg in
+        IMov (Reg reg, arg))
+      reg_args
   in
-  arg_movs @ [ ICall f ]
+  (* The rest are passed on the stack (in reverse order) *)
+  let push_stack_args =
+    List.rev_map
+      (fun arg ->
+        let arg = compile_imm env stack_index arg in
+        IPush arg)
+      stack_args
+  in
+  (* We need to align the stack to 16 bytes before calling *)
+  (* TODO: Quick and dirty. Probably use `sub RSP, padding` *)
+  let push_stack_args =
+    if List.length push_stack_args mod 2 = 0 then push_stack_args
+    else push_stack_args @ [ IPush (Reg RAX) ]
+  in
+  let pop_stack_args =
+    [
+      IAdd
+        ( Reg RSP,
+          Const (Int64.of_int (reg64_size_bytes * List.length push_stack_args))
+        );
+    ]
+  in
+  mov_reg_args @ push_stack_args @ [ ICall f ] @ pop_stack_args
 
-(* [count_let e] returns the deepest nesting of let-bindings in [e] *)
+(* [count_let e] returns t  he deepest nesting of let-bindings in [e] *)
 let rec count_let (e : 'a expr) : int =
   match e with
   | ENumber _ | EBool _ | EId _ -> 0
@@ -289,12 +317,6 @@ let error_handler label err_code =
     ICall "error";
   ]
 
-let align n alignment =
-  let remainder = n mod alignment in
-  if remainder = 0 then n else n + alignment - remainder
-
-let stack_align n = align n 16
-
 let compile_to_asm_string (expr : 'a expr) : string =
   let tagged = tag expr in
   let renamed = rename tagged in
@@ -302,7 +324,7 @@ let compile_to_asm_string (expr : 'a expr) : string =
   let _ = assert (is_anf anfed) in
   (* Count let-bindings to allocate stack frame size *)
   let max_locals = count_let anfed in
-  let stack_size = stack_align (max_locals * 8) in
+  let stack_frame_size = stack_align (max_locals * reg64_size_bytes) in
   (* Re-tag after ANF conversion *)
   let tagged = tag anfed in
   let body = compile_expr Env.empty 0 tagged in
@@ -315,7 +337,7 @@ let compile_to_asm_string (expr : 'a expr) : string =
       ILabel "our_code_starts_here";
       IPush (Reg RBX);
       IMov (Reg RBP, Reg RSP);
-      ISub (Reg RSP, Const (Int64.of_int stack_size));
+      ISub (Reg RSP, Const (Int64.of_int stack_frame_size));
     ]
   in
   let postlude = [ IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet ] in
