@@ -131,6 +131,16 @@ let to_anf expr =
                   (cond_imm, mk_let thn_imm thn_ctx, mk_let els_imm els_ctx, ())
               );
             ] )
+    | EApp (f, args, tag) ->
+        let args_imm, args_ctx =
+          List.fold_left
+            (fun (args_imm, args_ctx) arg ->
+              let arg_imm, arg_ctx = to_anf' arg in
+              (args_imm @ [ arg_imm ], args_ctx @ arg_ctx))
+            ([], []) args
+        in
+        let tmp = "$" ^ string_of_int tag in
+        (EId (tmp, ()), args_ctx @ [ (tmp, EApp (f, args_imm, ())) ])
   in
   let imm, ctx = to_anf' expr in
   mk_let imm ctx
