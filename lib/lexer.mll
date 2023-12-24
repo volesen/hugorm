@@ -36,8 +36,6 @@ rule read =
   | '>'      { GT }
   | ">="     { GTE }
   | ','      { COMMA }
-  | ':'      { COLON }
-  | ';'      { SEMI_COLON }
   | '('      { LEFT_PAREN }
   | ')'      { RIGHT_PAREN }
   | id       { ID (Lexing.lexeme lexbuf) }

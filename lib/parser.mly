@@ -27,8 +27,6 @@
 %token GTE
 
 %token COMMA
-%token COLON
-%token SEMI_COLON
 
 %token LEFT_PAREN
 %token RIGHT_PAREN
@@ -58,7 +56,7 @@ program:
   | decls=list(decl); body=expr; EOF { Program(decls, body) }
 
 decl:
-  | DEF; f=ID; params=params; COLON; body=expr; SEMI_COLON { DFun(f, params, body, ()) }
+  | DEF; f=ID; params=params; body=expr; IN { DFun(f, params, body, ()) }
 
 params:
   | LEFT_PAREN; params=separated_list(COMMA, ID); RIGHT_PAREN { params }
