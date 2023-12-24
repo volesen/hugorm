@@ -46,6 +46,15 @@ let tag (e : 'a expr) : tag expr =
         let thn, cur = tag' thn cur in
         let els, cur = tag' els cur in
         (EIf (cond, thn, els, cur), cur + 1)
+    | EApp (f, args, _) ->
+        let args, cur =
+          List.fold_left
+            (fun (args, cur) arg ->
+              let arg, cur = tag' arg cur in
+              (args @ [ arg ], cur))
+            ([], cur) args
+        in
+        (EApp (f, args, cur), cur + 1)
   in
   let tagged, _ = tag' e 1 in
   tagged
