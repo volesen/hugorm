@@ -83,16 +83,17 @@ let rename (e : tag expr) : tag expr =
 let is_imm expr =
   match expr with
   | ENumber _ | EBool _ | EId _ -> true
-  | EPrim1 _ | EPrim2 _ | ELet _ | EIf _ -> false
+  | EPrim1 _ | EPrim2 _ | ELet _ | EIf _ | EApp _ -> false
 
 (* Are all operands are immediate? *)
 let rec is_anf expr =
   match expr with
+  | ENumber _ | EBool _ | EId _ -> true
   | EPrim1 (_, e, _) -> is_imm e
   | EPrim2 (_, l, r, _) -> is_imm l && is_imm r
   | ELet (_, e, body, _) -> is_anf e && is_anf body
   | EIf (cond, thn, els, _) -> is_imm cond && is_anf thn && is_anf els
-  | e -> is_imm e
+  | EApp (_, args, _) -> List.for_all is_imm args
 
 (** [mk_let expr bindings] encloses [expr] in nested let bindings *)
 let mk_let expr bindings =
