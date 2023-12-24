@@ -75,6 +75,7 @@ let rename (e : tag expr) : tag expr =
         let env' = Env.add x x' env in
         (* Disallow recursion in the bind for now *)
         ELet (x', rename' env e, rename' env' body, tag)
+    | EApp (f, args, tag) -> EApp (f, List.map (rename' env) args, tag)
   in
   rename' Env.empty e
 
