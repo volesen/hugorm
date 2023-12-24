@@ -188,8 +188,8 @@ and compile_imm env _ e =
   | EBool (true, _) -> const_true
   | EBool (false, _) -> const_false
   | EId (x, _) ->
-      let offset = Env.find x env in
-      RegOffset (RBP, -offset)
+      let slot = Env.find x env in
+      RegOffset (RBP, slot)
   | _ -> failwith err_unreachable
 
 and compile_prim1 env stack_index op e =
@@ -236,14 +236,14 @@ and compile_prim2 env stack_index op l r tag =
       ]
 
 and compile_id env _ x =
-  let offset = Env.find x env in
-  [ IMov (Reg RAX, RegOffset (RBP, -offset)) ]
+  let slot = Env.find x env in
+  [ IMov (Reg RAX, RegOffset (RBP, slot)) ]
 
 and compile_let env stack_index x e body =
-  let stack_index' = stack_index + reg64_size_bytes in
+  let stack_index' = stack_index - reg64_size_bytes in
   let env' = Env.add x stack_index' env in
   compile_expr env stack_index e
-  @ [ IMov (RegOffset (RBP, -stack_index'), Reg RAX) ]
+  @ [ IMov (RegOffset (RBP, stack_index'), Reg RAX) ]
   @ compile_expr env' stack_index' body
 
 and compile_if env stack_index cond thn els tag =
