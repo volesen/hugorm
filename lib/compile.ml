@@ -142,7 +142,7 @@ and compile_if env stack_index cond thn els tag =
   let end_label = gen_label ~prefix:"end" tag in
   compile_expr env stack_index cond
   @ [
-      IMov (scratch_reg, const_true);
+      IMov (scratch_reg, const_false);
       ICmp (Reg RAX, scratch_reg);
       IJe else_label;
     ]
