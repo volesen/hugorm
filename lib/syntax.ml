@@ -1,8 +1,8 @@
-type 'a program =
-  | Program of 'a decl list * 'a expr
+type 'a program = { decls : 'a decl list; body : 'a expr }
+[@@deriving show]
 
-and 'a decl =
-  | DFun of string * string list * 'a expr * 'a
+and 'a decl = DFun of string * string list * 'a expr * 'a
+[@@deriving show]
 
 and 'a expr =
   | ENumber of int64 * 'a
@@ -13,8 +13,11 @@ and 'a expr =
   | ELet of string * 'a expr * 'a expr * 'a
   | EIf of 'a expr * 'a expr * 'a expr * 'a
   | EApp of string * 'a expr list * 'a
+  [@@deriving show]
 
 and prim1 = Neg | Not
+[@@deriving show]
+
 
 and prim2 =
   | Add
@@ -28,3 +31,8 @@ and prim2 =
   | GreaterEq
   | Eq
   | Ne
+  [@@deriving show]
+
+
+type tag = int
+[@@deriving show]

@@ -4,8 +4,8 @@ open Hugorm
 let () =
   (* Quick and dirty*)
   let input_filename = Sys.argv.(1) in
-  let ast = Lex_and_parse.parse_file input_filename in
-  let instrs = Compile.compile ast in
+  let prog = Lex_and_parse.parse_file input_filename in
+  let instrs = Compile.compile prog in
   let asm_string = Asm.string_of_asm instrs in
 
   (* Write the assembler to a file *)
