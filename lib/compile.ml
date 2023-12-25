@@ -88,8 +88,7 @@ and compile_expr (env : env) (stack_index : int) (e : tag expr) : asm =
   | ELet (x, e, body, _) -> compile_let env stack_index x e body
   | EIf (cond, thn, els, tag) -> compile_if env stack_index cond thn els tag
   (* We use a stack-based calling convention. C FFI is handled manually for now. *)
-  | EApp ((("print" | "error") as f), args, _) ->
-      compile_native_call env stack_index f args
+  | EApp (("error" as f), args, _) -> compile_native_call env stack_index f args
   | EApp (f, args, _) -> compile_app env stack_index f args
 
 and compile_prim1 env stack_index op e =
@@ -170,12 +169,6 @@ and compile_native_call env _ f args =
   | "print", [ e ] ->
       let e_imm = compile_imm env e in
       [ IMov (Reg RDI, e_imm); ICall "print" ]
-  | "error", [ err_code; err_val ] ->
-      let err_val_imm = compile_imm env err_val in
-      let err_code_imm = compile_imm env err_code in
-      [
-        IMov (Reg RDI, err_code_imm); IMov (Reg RSI, err_val_imm); ICall "error";
-      ]
   | _ -> raise (Argument_mismatch ("Invalid native call: " ^ f))
 
 let compile (prog : 'a program) : asm =
