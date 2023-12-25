@@ -3,4 +3,4 @@ def sum_to(n)
         then 0
         else n + sum_to(n - 1)
 in
-sum_to(10)
+sum_to(100)
