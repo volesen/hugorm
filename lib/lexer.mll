@@ -26,6 +26,7 @@ rule read =
   | "else"   { ELSE }
   | "let"    { LET }
   | "in"     { IN }
+  | "def"    { DEF }
   | '+'      { PLUS }
   | '-'      { MINUS }
   | '*'      { STAR }

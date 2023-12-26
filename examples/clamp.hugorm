@@ -1,0 +1,17 @@
+def max(x, y)
+  if x > y
+    then x
+    else y
+in
+
+def min(x, y) 
+  if x < y
+    then x
+    else y
+in
+
+def clamp(min_val, max_val, x)
+  min(max(x, min_val), max_val)
+in
+
+clamp(0, 10, 42)

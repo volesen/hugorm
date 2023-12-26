@@ -15,6 +15,8 @@
 %token LET
 %token IN
 
+%token DEF
+
 %token PLUS
 %token MINUS
 %token STAR
@@ -41,14 +43,23 @@
 %start program
 
 %type <unit program> program
+%type <unit decl> decl
+%type <string list> params
 %type <unit expr> expr
+%type <unit expr list> args
 %type <prim1> prim1
 %type <prim2> prim2
 
 %%
 
 program:
-  | e = expr; EOF { e }
+  | decls=list(decl); body=expr; EOF { { decls; body } }
+
+decl:
+  | DEF; f=ID; params=params; body=expr; IN { DFun(f, params, body, ()) }
+
+params:
+  | LEFT_PAREN; params=separated_list(COMMA, ID); RIGHT_PAREN { params }
 
 expr:
   | LEFT_PAREN; e=expr; RIGHT_PAREN { e }
@@ -60,7 +71,10 @@ expr:
   | IF; cond=expr; THEN; thn=expr; ELSE; els=expr { EIf(cond, thn, els, ()) }
   | op=prim1; e=expr; { EPrim1(op, e, ()) }
   | l=expr; op=prim2; r=expr { EPrim2(op, l, r, ()) }
-  | f=ID; LEFT_PAREN; args=separated_list(COMMA, expr); RIGHT_PAREN { EApp(f, args, ()) }
+  | f=ID; args=args { EApp(f, args, ()) }
+
+args: 
+  | LEFT_PAREN; args=separated_list(COMMA, expr); RIGHT_PAREN { args }
 
 %inline prim1:
   | MINUS { Neg }
