@@ -53,7 +53,7 @@
 %%
 
 program:
-  | decls=list(decl); body=expr; EOF { Program(decls, body) }
+  | decls=list(decl); body=expr; EOF { { decls; body } }
 
 decl:
   | DEF; f=ID; params=params; body=expr; IN { DFun(f, params, body, ()) }
