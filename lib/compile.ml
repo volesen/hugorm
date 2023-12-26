@@ -92,8 +92,9 @@ and compile_expr (env : env) (stack_index : int) (e : tag expr) : asm =
   | EApp (f, args, _) -> compile_app env stack_index f args
 
 and compile_prim1 env stack_index op e =
-  compile_expr env stack_index e
-  @
+  compile_expr env stack_index e @ compile_prim1_op op
+
+and compile_prim1_op op =
   match op with
   | Neg -> [ INeg (Reg RAX) ]
   | Not -> [ IMov (scratch_reg, bool_mask); IXor (Reg RAX, scratch_reg) ]
@@ -101,33 +102,29 @@ and compile_prim1 env stack_index op e =
 and compile_prim2 env _ op l r tag =
   let l_arg = compile_imm env l in
   let r_arg = compile_imm env r in
-  [ IMov (Reg RAX, l_arg); IMov (scratch_reg, r_arg) ]
-  @
+  [ IMov (Reg RAX, l_arg); IMov (scratch_reg, r_arg) ] @ compile_prim2_op op tag
+
+and compile_prim2_op op tag =
   match op with
   | Add -> [ IAdd (Reg RAX, scratch_reg) ]
   | Sub -> [ ISub (Reg RAX, scratch_reg) ]
   | Mul -> [ IMul (Reg RAX, scratch_reg); ISar (Reg RAX, Const 1L) ]
   | And -> [ IAnd (Reg RAX, scratch_reg) ]
   | Or -> [ IOr (Reg RAX, scratch_reg) ]
-  | (Less | Greater | LessEq | GreaterEq | Eq | Ne) as cmp ->
-      let cmp_fail = gen_label ~prefix:"cmp_fail" tag in
-      let jump_instr =
-        match cmp with
-        | Less -> IJl cmp_fail
-        | Greater -> IJg cmp_fail
-        | LessEq -> IJle cmp_fail
-        | GreaterEq -> IJge cmp_fail
-        | Eq -> IJe cmp_fail
-        | Ne -> IJne cmp_fail
-        | _ -> raise (Unreachable __LOC__)
-      in
-      [
-        ICmp (Reg RAX, scratch_reg);
-        IMov (Reg RAX, const_true);
-        jump_instr;
-        IMov (Reg RAX, const_false);
-        ILabel cmp_fail;
-      ]
+  | Eq | Ne | Less | Greater | LessEq | GreaterEq -> compile_prim2_cmp_op op tag
+
+and compile_prim2_cmp_op cmp tag =
+  let cmp_fail = gen_label ~prefix:"cmp_fail" tag in
+  [ ICmp (Reg RAX, scratch_reg); IMov (Reg RAX, const_true) ]
+  @ (match cmp with
+    | Less -> [ IJl cmp_fail ]
+    | Greater -> [ IJg cmp_fail ]
+    | LessEq -> [ IJle cmp_fail ]
+    | GreaterEq -> [ IJge cmp_fail ]
+    | Eq -> [ IJe cmp_fail ]
+    | Ne -> [ IJne cmp_fail ]
+    | _ -> raise (Unreachable __LOC__))
+  @ [ IMov (Reg RAX, const_false); ILabel cmp_fail ]
 
 and compile_let env stack_index x e body =
   let stack_index' = stack_index - reg64_size_bytes in
