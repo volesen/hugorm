@@ -83,19 +83,19 @@ and compile_cprim2_op op tag =
   | Mul -> [ IMul (Reg RAX, scratch_reg); ISar (Reg RAX, Const 1L) ]
   | And -> [ IAnd (Reg RAX, scratch_reg) ]
   | Or -> [ IOr (Reg RAX, scratch_reg) ]
-  | Eq | Ne | Less | Greater | LessEq | GreaterEq ->
+  | Eq | Ne | Lt | Gt | Leq | Geq ->
       compile_cprim2_cmp_op op tag
 
 and compile_cprim2_cmp_op cmp tag =
   let cmp_fail = fresh_label ~prefix:"cmp_fail" tag in
   [ ICmp (Reg RAX, scratch_reg); IMov (Reg RAX, const_true) ]
   @ (match cmp with
-    | Less -> [ IJl cmp_fail ]
-    | Greater -> [ IJg cmp_fail ]
-    | LessEq -> [ IJle cmp_fail ]
-    | GreaterEq -> [ IJge cmp_fail ]
     | Eq -> [ IJe cmp_fail ]
     | Ne -> [ IJne cmp_fail ]
+    | Lt -> [ IJl cmp_fail ]
+    | Gt -> [ IJg cmp_fail ]
+    | Leq -> [ IJle cmp_fail ]
+    | Geq -> [ IJge cmp_fail ]
     | _ -> raise (Unreachable __LOC__))
   @ [ IMov (Reg RAX, const_false); ILabel cmp_fail ]
 

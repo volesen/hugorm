@@ -21,10 +21,11 @@
 %token MINUS
 %token STAR
 %token EQ
+%token NE
 %token LT
-%token LTE
+%token LEQ
 %token GT
-%token GTE
+%token GEQ
 
 %token COMMA
 
@@ -35,8 +36,8 @@
 
 %nonassoc IN
 %nonassoc ELSE
-%right EQ
-%left LT LTE GT GTE
+%right EQ NE
+%left LT LEQ GT GEQ
 %left PLUS MINUS 
 %left STAR
 
@@ -84,7 +85,8 @@ args:
   | MINUS { Sub }
   | STAR { Mul }
   | EQ { Eq }
-  | LT { Less }
-  | LTE { LessEq }
-  | GT { Greater }
-  | GTE { GreaterEq }
+  | NE { Ne }
+  | LT { Lt }
+  | LEQ { Leq }
+  | GT { Gt }
+  | GEQ { Geq }
