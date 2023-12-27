@@ -31,10 +31,11 @@ rule read =
   | '-'      { MINUS }
   | '*'      { STAR }
   | '='      { EQ }
+  | "<>"     { NE }
   | '<'      { LT }
-  | "<="     { LTE }
+  | "<="     { LEQ }
   | '>'      { GT }
-  | ">="     { GTE }
+  | ">="     { GEQ }
   | ','      { COMMA }
   | '('      { LEFT_PAREN }
   | ')'      { RIGHT_PAREN }
