@@ -174,7 +174,7 @@ let compile_aprog (aprog : 'a aprogram) : asm =
   @ body_asm @ decls_asm
 
 let compile (prog : unit program) : asm =
-  let tagged = Tag.tag prog in
+  let tagged = Syntax.tag prog in
   let renamed = Rename.rename_program tagged in
   let anfed = Anf.anf_program renamed in
   let retagged = Anf.tag anfed in
