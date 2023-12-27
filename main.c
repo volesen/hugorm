@@ -10,7 +10,7 @@ const hugorm_val BOOL_FALSE = 0x7FFFFFFFFFFFFFFF;
 const uint64_t ERR_NOT_NUMBER = 1;
 const uint64_t ERR_NOT_BOOLEAN = 2;
 
-extern hugorm_val our_code_starts_here() asm("our_code_starts_here");
+extern hugorm_val our_code_starts_here(uint64_t*) asm("our_code_starts_here");
 void error(uint64_t errCode, hugorm_val val) asm("error");
 hugorm_val print(hugorm_val val) asm("print");
 
@@ -37,9 +37,10 @@ hugorm_val print(hugorm_val val) {
 }
 
 int main(int argc, char **argv) {
-  int64_t result = our_code_starts_here();
-
+  uint64_t *HEAP =
+      calloc(1024, sizeof(uint64_t)); // Allocate 8KB of memory for now
+  int64_t result = our_code_starts_here(HEAP);
   print(result);
-  putchar('\n');
+  free(HEAP);
   return 0;
 }
