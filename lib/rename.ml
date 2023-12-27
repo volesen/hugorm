@@ -10,15 +10,17 @@ exception UnboundId of string
 let gen_id id tag = id ^ string_of_int tag
 
 let rec rename_program (prog : tag program) : tag program =
-  let decls = rename_decls empty_env prog.decls in
+  let decls = rename_decls prog.decls in
   let body = rename_expr empty_env prog.body in
   { decls; body }
 
-and rename_decls env decls = List.map (rename_decl env) decls
+and rename_decls decls = List.map rename_decl decls
 
-and rename_decl env d =
+and rename_decl d =
   match d with
   | DFun (name, args, body, tag) ->
+      (* Should we rename the arguments? *)
+      let env = List.map (fun arg -> (arg, arg)) args in
       (* Should we rename the function? *)
       DFun (name, args, rename_expr env body, tag)
 
