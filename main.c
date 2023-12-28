@@ -3,7 +3,8 @@
 #include <stdlib.h>
 
 typedef uint64_t hugorm_val;
-const uint64_t BOOL_TAG = 0x0000000000000001;
+const uint64_t BOOL_TAG = 0x0000000000000003;
+const uint64_t PAIR_TAG = 0x0000000000000001;
 const hugorm_val BOOL_TRUE = 0xFFFFFFFFFFFFFFFF;
 const hugorm_val BOOL_FALSE = 0x7FFFFFFFFFFFFFFF;
 

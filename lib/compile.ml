@@ -12,7 +12,8 @@ let max_int = Int64.div Int64.max_int 2L
 let const_true = Const 0xFFFFFFFFFFFFFFFFL
 let const_false = Const 0x7FFFFFFFFFFFFFFFL
 let bool_mask = Const 0x8000000000000000L
-let bool_tag = Const 0x0000000000000001L
+let bool_tag = Const 0x0000000000000003L
+let pair_tag = Const 0x0000000000000001L
 let scratch_reg = Reg R11
 
 let count_let (e : 'a aexpr) =
