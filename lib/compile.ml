@@ -22,7 +22,7 @@ let count_let (e : 'a aexpr) =
     match cexpr with
     | CIf (_, l, r, _) -> max (count_let_aexpr l) (count_let_aexpr r)
     (* Only contain immediate expression *)
-    | CImmExpr _ | CPrim1 _ | CPrim2 _ | CApp _ -> 0
+    | CImmExpr _ | CPrim1 _ | CPrim2 _ | CApp _ | CPair _ -> 0
   and count_let_aexpr (aexpr : 'a aexpr) =
     match aexpr with
     | ALet (_, bind, body, _) ->
@@ -60,6 +60,7 @@ let rec compile_cexpr (env : env) (stack_index : int) (cexpr : tag cexpr) : asm
   | CIf (cond, thn, els, tag) -> compile_cif env stack_index cond thn els tag
   | CApp (("print" as f), args, _) -> compile_native_call env f args
   | CApp (f, args, _) -> compile_capp env f args
+  | CPair (fst, snd, _) -> compile_cpair env fst snd
 
 and compile_cimmexpr env immexpr =
   let arg = compile_immexpr env immexpr in
@@ -71,6 +72,8 @@ and compile_cprim1_op op =
   match op with
   | Neg -> [ INeg (Reg RAX) ]
   | Not -> [ IMov (scratch_reg, bool_mask); IXor (Reg RAX, scratch_reg) ]
+  | Fst -> [ ISub (Reg RAX, pair_tag); IMov (Reg RAX, RegOffset (RAX, 0)) ]
+  | Snd -> [ ISub (Reg RAX, pair_tag); IMov (Reg RAX, RegOffset (RAX, 8)) ]
 
 and compile_cprim2 env op l r tag =
   let l_arg = compile_immexpr env l in
@@ -137,6 +140,22 @@ and compile_native_call env f args =
       let e_imm = compile_immexpr env e in
       [ IMov (Reg RDI, e_imm); ICall "print" ]
   | _ -> raise (Argument_mismatch ("Invalid native call: " ^ f))
+
+and compile_cpair env fst snd =
+  let fst_arg = compile_immexpr env fst in
+  let snd_arg = compile_immexpr env snd in
+  [
+    (* Move values on heap *)
+    IMov (scratch_reg, fst_arg);
+    IMov (RegOffset (R15, 0), scratch_reg);
+    IMov (scratch_reg, snd_arg);
+    IMov (RegOffset (R15, 8), scratch_reg);
+    (* Tag the pair *)
+    IMov (Reg RAX, heap_reg);
+    IAdd (Reg RAX, pair_tag);
+    (* Bump the header pointer *)
+    IAdd (heap_reg, Const 16L);
+  ]
 
 and compile_aexpr env stack_index aexpr =
   match aexpr with

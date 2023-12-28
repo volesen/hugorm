@@ -40,3 +40,5 @@ and rename_expr (env : env) expr =
       let env' = (x, x') :: env in
       ELet (x', rename_expr env e, rename_expr env' b, tag)
   | EApp (f, args, tag) -> EApp (f, List.map (rename_expr env) args, tag)
+  | EPair (fst, snd, tag) ->
+      EPair (rename_expr env fst, rename_expr env snd, tag)
