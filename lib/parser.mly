@@ -29,6 +29,9 @@
 
 %token COMMA
 
+%token FST
+%token SND
+
 %token LEFT_PAREN
 %token RIGHT_PAREN
 
@@ -73,12 +76,15 @@ expr:
   | op=prim1; e=expr; { EPrim1(op, e, ()) }
   | l=expr; op=prim2; r=expr { EPrim2(op, l, r, ()) }
   | f=ID; args=args { EApp(f, args, ()) }
+  | LEFT_PAREN; fst=expr; COMMA; snd=expr; RIGHT_PAREN { EPair(fst, snd, ()) }
 
 args: 
   | LEFT_PAREN; args=separated_list(COMMA, expr); RIGHT_PAREN { args }
 
 %inline prim1:
   | MINUS { Neg }
+  | FST { Fst }
+  | SND { Snd }
 
 %inline prim2:
   | PLUS { Add }
