@@ -26,6 +26,7 @@ and rename_decl d =
 
 and rename_expr (env : env) expr =
   match expr with
+  | ENil tag -> ENil tag
   | ENumber (n, tag) -> ENumber (n, tag)
   | EBool (b, tag) -> EBool (b, tag)
   | EPrim1 (op, e, tag) -> EPrim1 (op, rename_expr env e, tag)

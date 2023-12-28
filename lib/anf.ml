@@ -13,6 +13,7 @@ and 'a cexpr =
   | CImmExpr of 'a immexpr
 
 and 'a immexpr =
+  | ImmNil of 'a
   | ImmNum of int64 * 'a
   | ImmBool of bool * 'a
   | ImmId of string * 'a
@@ -28,7 +29,7 @@ let anf (e : tag expr) : unit aexpr =
       bindings (ACExpr cexpr)
   and help_c (e : tag expr) : unit cexpr * ctx =
     match e with
-    | (ENumber _ | EBool _ | EId _) as e ->
+    | (ENumber _ | EBool _ | EId _ | ENil _) as e ->
         let imm, ctx = help_i e in
         (CImmExpr imm, ctx)
     | EPrim1 (op, e, _) ->
@@ -57,6 +58,7 @@ let anf (e : tag expr) : unit aexpr =
         (CPair (fst_imm, snd_imm, ()), fst_ctx @ snd_ctx)
   and help_i (e : tag expr) : unit immexpr * ctx =
     match e with
+    | ENil _ -> (ImmNil (), [])
     | ENumber (n, _) -> (ImmNum (n, ()), [])
     | EBool (b, _) -> (ImmBool (b, ()), [])
     | EId (x, _) -> (ImmId (x, ()), [])
@@ -128,6 +130,7 @@ let tag (e : unit aprogram) : tag aprogram =
         (CImmExpr e, tag + 1)
   and tag_immexpr (e : unit immexpr) (tag : tag) : tag immexpr * tag =
     match e with
+    | ImmNil _ -> (ImmNil tag, tag + 1)
     | ImmNum (n, ()) -> (ImmNum (n, tag), tag + 1)
     | ImmBool (b, ()) -> (ImmBool (b, tag), tag + 1)
     | ImmId (x, ()) -> (ImmId (x, tag), tag + 1)

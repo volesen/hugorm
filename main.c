@@ -31,9 +31,13 @@ void _print(hugorm_val val) {
     printf("true");
   } else if (val == BOOL_FALSE) {
     printf("false");
+  } else if (val == PAIR_TAG) {
+    // Equivalent to null pointer, after removing tag
+    printf("()");
   } else if ((val & PAIR_TAG) == 1) {
     // Remove tag from pair pointer
     hugorm_val *pair = (hugorm_val *)(val - PAIR_TAG);
+
     printf("(");
     _print(pair[0]);
     printf(", ");

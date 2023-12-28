@@ -31,6 +31,7 @@
 
 %token FST
 %token SND
+%token NIL
 
 %token LEFT_PAREN
 %token RIGHT_PAREN
@@ -66,6 +67,7 @@ params:
   | LEFT_PAREN; params=separated_list(COMMA, ID); RIGHT_PAREN { params }
 
 expr:
+  | NIL; { ENil () }
   | LEFT_PAREN; e=expr; RIGHT_PAREN { e }
   | i=INT { ENumber(i, ()) }
   | TRUE { EBool(true, ()) }

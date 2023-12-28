@@ -42,6 +42,7 @@ let fresh_label ?(prefix = "L") tag = prefix ^ string_of_int tag
 
 let compile_immexpr (env : env) (immexpr : 'a immexpr) : arg =
   match immexpr with
+  | ImmNil _ -> pair_tag
   | ImmNum (n, _) ->
       if n > max_int || n < min_int then raise Integer_overflow
       else Const (Int64.shift_left n 1)

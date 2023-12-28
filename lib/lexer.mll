@@ -37,8 +37,9 @@ rule read =
   | '>'      { GT }
   | ">="     { GEQ }
   | ','      { COMMA }
-  | "#1"    { FST }
-  | "#2"    { SND }
+  | "#1"     { FST }
+  | "#2"     { SND }
+  | "nil"    { NIL }
   | '('      { LEFT_PAREN }
   | ')'      { RIGHT_PAREN }
   | id       { ID (Lexing.lexeme lexbuf) }

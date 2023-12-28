@@ -2,6 +2,7 @@ type 'a program = { decls : 'a decl list; body : 'a expr }
 and 'a decl = DFun of string * string list * 'a expr * 'a
 
 and 'a expr =
+  | ENil of 'a
   | ENumber of int64 * 'a
   | EBool of bool * 'a
   | EPrim1 of prim1 * 'a expr * 'a
@@ -19,6 +20,7 @@ type tag = int
 
 let tag_of_expr (e : 'a expr) : 'a =
   match e with
+  | ENil tag -> tag
   | ENumber (_, tag) -> tag
   | EBool (_, tag) -> tag
   | EPrim1 (_, _, tag) -> tag
@@ -52,6 +54,7 @@ and tag_decl d tag =
 
 and tag_expr e tag =
   match e with
+  | ENil _ -> (ENil tag, tag + 1)
   | ENumber (n, _) -> (ENumber (n, tag), tag + 1)
   | EBool (b, _) -> (EBool (b, tag), tag + 1)
   | EPrim1 (op, e, _) ->
