@@ -15,6 +15,7 @@ let bool_mask = Const 0x8000000000000000L
 let bool_tag = Const 0x0000000000000003L
 let pair_tag = Const 0x0000000000000001L
 let scratch_reg = Reg R11
+let heap_reg = Reg R15
 
 let count_let (e : 'a aexpr) =
   let rec count_let_cexpr (cexpr : 'a cexpr) =
@@ -84,8 +85,7 @@ and compile_cprim2_op op tag =
   | Mul -> [ IMul (Reg RAX, scratch_reg); ISar (Reg RAX, Const 1L) ]
   | And -> [ IAnd (Reg RAX, scratch_reg) ]
   | Or -> [ IOr (Reg RAX, scratch_reg) ]
-  | Eq | Ne | Lt | Gt | Leq | Geq ->
-      compile_cprim2_cmp_op op tag
+  | Eq | Ne | Lt | Gt | Leq | Geq -> compile_cprim2_cmp_op op tag
 
 and compile_cprim2_cmp_op cmp tag =
   let cmp_fail = fresh_label ~prefix:"cmp_fail" tag in
@@ -166,7 +166,20 @@ let compile_adecl (adecl : 'a adecl) : asm =
       @ [ IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet ]
 
 let compile_body (body : tag aexpr) : asm =
-  compile_adecl (ADFun (entry_label, [], body, 0))
+  let frame_size =
+    let max_stack_size = 8 * count_let body in
+    max_stack_size + stack_alignment_padding max_stack_size
+  in
+  [
+    ILabel entry_label;
+    IPush (Reg RBP);
+    IMov (Reg RBP, Reg RSP);
+    ISub (Reg RSP, Const (Int64.of_int frame_size));
+    (* Difference from function declarations *)
+    IMov (heap_reg, Reg RDI);
+  ]
+  @ compile_aexpr empty_env 0 body
+  @ [ IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet ]
 
 let compile_aprog (aprog : 'a aprogram) : asm =
   let decls_asm = List.concat_map compile_adecl aprog.decls in
