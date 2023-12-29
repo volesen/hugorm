@@ -44,6 +44,7 @@
 %left LT LEQ GT GEQ
 %left PLUS MINUS 
 %left STAR
+%left FST SND
 
 %start program
 
