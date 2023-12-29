@@ -12,15 +12,17 @@ let max_int = Int64.div Int64.max_int 2L
 let const_true = Const 0xFFFFFFFFFFFFFFFFL
 let const_false = Const 0x7FFFFFFFFFFFFFFFL
 let bool_mask = Const 0x8000000000000000L
-let bool_tag = Const 0x0000000000000001L
+let bool_tag = Const 0x0000000000000003L
+let pair_tag = Const 0x0000000000000001L
 let scratch_reg = Reg R11
+let heap_reg = Reg R15
 
 let count_let (e : 'a aexpr) =
   let rec count_let_cexpr (cexpr : 'a cexpr) =
     match cexpr with
     | CIf (_, l, r, _) -> max (count_let_aexpr l) (count_let_aexpr r)
     (* Only contain immediate expression *)
-    | CImmExpr _ | CPrim1 _ | CPrim2 _ | CApp _ -> 0
+    | CImmExpr _ | CPrim1 _ | CPrim2 _ | CApp _ | CPair _ -> 0
   and count_let_aexpr (aexpr : 'a aexpr) =
     match aexpr with
     | ALet (_, bind, body, _) ->
@@ -40,6 +42,7 @@ let fresh_label ?(prefix = "L") tag = prefix ^ string_of_int tag
 
 let compile_immexpr (env : env) (immexpr : 'a immexpr) : arg =
   match immexpr with
+  | ImmNil _ -> pair_tag
   | ImmNum (n, _) ->
       if n > max_int || n < min_int then raise Integer_overflow
       else Const (Int64.shift_left n 1)
@@ -58,6 +61,7 @@ let rec compile_cexpr (env : env) (stack_index : int) (cexpr : tag cexpr) : asm
   | CIf (cond, thn, els, tag) -> compile_cif env stack_index cond thn els tag
   | CApp (("print" as f), args, _) -> compile_native_call env f args
   | CApp (f, args, _) -> compile_capp env f args
+  | CPair (fst, snd, _) -> compile_cpair env fst snd
 
 and compile_cimmexpr env immexpr =
   let arg = compile_immexpr env immexpr in
@@ -69,6 +73,8 @@ and compile_cprim1_op op =
   match op with
   | Neg -> [ INeg (Reg RAX) ]
   | Not -> [ IMov (scratch_reg, bool_mask); IXor (Reg RAX, scratch_reg) ]
+  | Fst -> [ ISub (Reg RAX, pair_tag); IMov (Reg RAX, RegOffset (RAX, 0)) ]
+  | Snd -> [ ISub (Reg RAX, pair_tag); IMov (Reg RAX, RegOffset (RAX, 8)) ]
 
 and compile_cprim2 env op l r tag =
   let l_arg = compile_immexpr env l in
@@ -83,8 +89,7 @@ and compile_cprim2_op op tag =
   | Mul -> [ IMul (Reg RAX, scratch_reg); ISar (Reg RAX, Const 1L) ]
   | And -> [ IAnd (Reg RAX, scratch_reg) ]
   | Or -> [ IOr (Reg RAX, scratch_reg) ]
-  | Eq | Ne | Lt | Gt | Leq | Geq ->
-      compile_cprim2_cmp_op op tag
+  | Eq | Ne | Lt | Gt | Leq | Geq -> compile_cprim2_cmp_op op tag
 
 and compile_cprim2_cmp_op cmp tag =
   let cmp_fail = fresh_label ~prefix:"cmp_fail" tag in
@@ -137,6 +142,22 @@ and compile_native_call env f args =
       [ IMov (Reg RDI, e_imm); ICall "print" ]
   | _ -> raise (Argument_mismatch ("Invalid native call: " ^ f))
 
+and compile_cpair env fst snd =
+  let fst_arg = compile_immexpr env fst in
+  let snd_arg = compile_immexpr env snd in
+  [
+    (* Move values on heap *)
+    IMov (scratch_reg, fst_arg);
+    IMov (RegOffset (R15, 0), scratch_reg);
+    IMov (scratch_reg, snd_arg);
+    IMov (RegOffset (R15, 8), scratch_reg);
+    (* Tag the pair *)
+    IMov (Reg RAX, heap_reg);
+    IAdd (Reg RAX, pair_tag);
+    (* Bump the header pointer *)
+    IAdd (heap_reg, Const 16L);
+  ]
+
 and compile_aexpr env stack_index aexpr =
   match aexpr with
   | ACExpr cexpr -> compile_cexpr env stack_index cexpr
@@ -165,7 +186,20 @@ let compile_adecl (adecl : 'a adecl) : asm =
       @ [ IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet ]
 
 let compile_body (body : tag aexpr) : asm =
-  compile_adecl (ADFun (entry_label, [], body, 0))
+  let frame_size =
+    let max_stack_size = 8 * count_let body in
+    max_stack_size + stack_alignment_padding max_stack_size
+  in
+  [
+    ILabel entry_label;
+    IPush (Reg RBP);
+    IMov (Reg RBP, Reg RSP);
+    ISub (Reg RSP, Const (Int64.of_int frame_size));
+    (* Difference from function declarations *)
+    IMov (heap_reg, Reg RDI);
+  ]
+  @ compile_aexpr empty_env 0 body
+  @ [ IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet ]
 
 let compile_aprog (aprog : 'a aprogram) : asm =
   let decls_asm = List.concat_map compile_adecl aprog.decls in

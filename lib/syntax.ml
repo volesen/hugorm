@@ -2,6 +2,7 @@ type 'a program = { decls : 'a decl list; body : 'a expr }
 and 'a decl = DFun of string * string list * 'a expr * 'a
 
 and 'a expr =
+  | ENil of 'a
   | ENumber of int64 * 'a
   | EBool of bool * 'a
   | EPrim1 of prim1 * 'a expr * 'a
@@ -10,26 +11,16 @@ and 'a expr =
   | ELet of string * 'a expr * 'a expr * 'a
   | EIf of 'a expr * 'a expr * 'a expr * 'a
   | EApp of string * 'a expr list * 'a
+  | EPair of 'a expr * 'a expr * 'a
 
-and prim1 = Neg | Not
+and prim1 = Neg | Not | Fst | Snd
+and prim2 = Add | Sub | Mul | And | Or | Lt | Gt | Leq | Geq | Eq | Ne
 
-and prim2 =
-  | Add
-  | Sub
-  | Mul
-  | And
-  | Or
-  | Lt
-  | Gt
-  | Leq
-  | Geq
-  | Eq
-  | Ne
-
-type tag = int [@@deriving show]
+type tag = int
 
 let tag_of_expr (e : 'a expr) : 'a =
   match e with
+  | ENil tag -> tag
   | ENumber (_, tag) -> tag
   | EBool (_, tag) -> tag
   | EPrim1 (_, _, tag) -> tag
@@ -38,6 +29,7 @@ let tag_of_expr (e : 'a expr) : 'a =
   | ELet (_, _, _, tag) -> tag
   | EIf (_, _, _, tag) -> tag
   | EApp (_, _, tag) -> tag
+  | EPair (_, _, tag) -> tag
 
 let rec tag_program (prog : 'a program) : tag program =
   let decls, tag = tag_decls prog.decls 0 in
@@ -62,6 +54,7 @@ and tag_decl d tag =
 
 and tag_expr e tag =
   match e with
+  | ENil _ -> (ENil tag, tag + 1)
   | ENumber (n, _) -> (ENumber (n, tag), tag + 1)
   | EBool (b, _) -> (EBool (b, tag), tag + 1)
   | EPrim1 (op, e, _) ->
@@ -84,6 +77,10 @@ and tag_expr e tag =
   | EApp (name, args, _) ->
       let args, tag = tag_args args tag in
       (EApp (name, args, tag), tag + 1)
+  | EPair (fst, snd, _) ->
+      let fst, tag = tag_expr fst tag in
+      let snd, tag = tag_expr snd tag in
+      (EPair (fst, snd, tag), tag + 1)
 
 and tag_args args tag =
   let args, tag =

@@ -29,6 +29,10 @@
 
 %token COMMA
 
+%token FST
+%token SND
+%token NIL
+
 %token LEFT_PAREN
 %token RIGHT_PAREN
 
@@ -40,6 +44,7 @@
 %left LT LEQ GT GEQ
 %left PLUS MINUS 
 %left STAR
+%left FST SND
 
 %start program
 
@@ -63,6 +68,7 @@ params:
   | LEFT_PAREN; params=separated_list(COMMA, ID); RIGHT_PAREN { params }
 
 expr:
+  | NIL; { ENil () }
   | LEFT_PAREN; e=expr; RIGHT_PAREN { e }
   | i=INT { ENumber(i, ()) }
   | TRUE { EBool(true, ()) }
@@ -73,12 +79,15 @@ expr:
   | op=prim1; e=expr; { EPrim1(op, e, ()) }
   | l=expr; op=prim2; r=expr { EPrim2(op, l, r, ()) }
   | f=ID; args=args { EApp(f, args, ()) }
+  | LEFT_PAREN; fst=expr; COMMA; snd=expr; RIGHT_PAREN { EPair(fst, snd, ()) }
 
 args: 
   | LEFT_PAREN; args=separated_list(COMMA, expr); RIGHT_PAREN { args }
 
 %inline prim1:
   | MINUS { Neg }
+  | FST { Fst }
+  | SND { Snd }
 
 %inline prim2:
   | PLUS { Add }

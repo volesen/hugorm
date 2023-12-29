@@ -2,7 +2,6 @@ open Syntax
 
 type 'a aprogram = { decls : 'a adecl list; body : 'a aexpr }
 and 'a adecl = ADFun of string * string list * 'a aexpr * 'a
-
 and 'a aexpr = ALet of string * 'a cexpr * 'a aexpr * 'a | ACExpr of 'a cexpr
 
 and 'a cexpr =
@@ -10,9 +9,11 @@ and 'a cexpr =
   | CPrim1 of prim1 * 'a immexpr * 'a
   | CPrim2 of prim2 * 'a immexpr * 'a immexpr * 'a
   | CApp of string * 'a immexpr list * 'a
+  | CPair of 'a immexpr * 'a immexpr * 'a
   | CImmExpr of 'a immexpr
 
 and 'a immexpr =
+  | ImmNil of 'a
   | ImmNum of int64 * 'a
   | ImmBool of bool * 'a
   | ImmId of string * 'a
@@ -28,7 +29,7 @@ let anf (e : tag expr) : unit aexpr =
       bindings (ACExpr cexpr)
   and help_c (e : tag expr) : unit cexpr * ctx =
     match e with
-    | (ENumber _ | EBool _ | EId _) as e ->
+    | (ENumber _ | EBool _ | EId _ | ENil _) as e ->
         let imm, ctx = help_i e in
         (CImmExpr imm, ctx)
     | EPrim1 (op, e, _) ->
@@ -51,12 +52,18 @@ let anf (e : tag expr) : unit aexpr =
         let arg_imms, ctxs = args |> List.map help_i |> List.split in
         let ctx = List.concat ctxs in
         (CApp (f, arg_imms, ()), ctx)
+    | EPair (fst, snd, _) ->
+        let fst_imm, fst_ctx = help_i fst in
+        let snd_imm, snd_ctx = help_i snd in
+        (CPair (fst_imm, snd_imm, ()), fst_ctx @ snd_ctx)
   and help_i (e : tag expr) : unit immexpr * ctx =
     match e with
+    | ENil _ -> (ImmNil (), [])
     | ENumber (n, _) -> (ImmNum (n, ()), [])
     | EBool (b, _) -> (ImmBool (b, ()), [])
     | EId (x, _) -> (ImmId (x, ()), [])
-    | (EPrim1 _ | EPrim2 _ | EIf _ | ELet _ | EApp _) as e -> imm_of_cexpr e
+    | (EPrim1 _ | EPrim2 _ | EIf _ | ELet _ | EApp _ | EPair _) as e ->
+        imm_of_cexpr e
   and imm_of_cexpr (e : tag expr) : unit immexpr * ctx =
     let tag = tag_of_expr e in
     let x = "x" ^ string_of_int tag in
@@ -114,11 +121,16 @@ let tag (e : unit aprogram) : tag aprogram =
             args ([], tag)
         in
         (CApp (f, args, tag), tag + 1)
+    | CPair (fst, snd, ()) ->
+        let fst, tag = tag_immexpr fst tag in
+        let snd, tag = tag_immexpr snd tag in
+        (CPair (fst, snd, tag), tag + 1)
     | CImmExpr e ->
         let e, tag = tag_immexpr e tag in
         (CImmExpr e, tag + 1)
   and tag_immexpr (e : unit immexpr) (tag : tag) : tag immexpr * tag =
     match e with
+    | ImmNil _ -> (ImmNil tag, tag + 1)
     | ImmNum (n, ()) -> (ImmNum (n, tag), tag + 1)
     | ImmBool (b, ()) -> (ImmBool (b, tag), tag + 1)
     | ImmId (x, ()) -> (ImmId (x, tag), tag + 1)
