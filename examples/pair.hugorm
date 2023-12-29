@@ -1,4 +1,0 @@
-let pair = (1, (2, 3)) in
-let x = print(#1 pair) in
-let x = print(#2 pair) in
-pair
