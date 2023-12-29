@@ -37,9 +37,10 @@ rule read =
   | '>'      { GT }
   | ">="     { GEQ }
   | ','      { COMMA }
-  | "#1"     { FST }
-  | "#2"     { SND }
-  | "nil"    { NIL }
+  | '{'      { LEFT_CURLY }
+  | '}'      { RIGHT_CURLY }
+  | '['      { LEFT_BRACKET }
+  | ']'      { RIGHT_BRACKET }
   | '('      { LEFT_PAREN }
   | ')'      { RIGHT_PAREN }
   | id       { ID (Lexing.lexeme lexbuf) }

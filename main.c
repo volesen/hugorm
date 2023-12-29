@@ -4,7 +4,7 @@
 
 typedef uint64_t hugorm_val;
 const uint64_t BOOL_TAG = 0x0000000000000003;
-const uint64_t PAIR_TAG = 0x0000000000000001;
+const uint64_t TUPLE_TAG = 0x0000000000000001;
 const hugorm_val BOOL_TRUE = 0xFFFFFFFFFFFFFFFF;
 const hugorm_val BOOL_FALSE = 0x7FFFFFFFFFFFFFFF;
 
@@ -25,24 +25,26 @@ void error(uint64_t errCode, hugorm_val val) {
 }
 
 void _print(hugorm_val val) {
-  if ((val & PAIR_TAG) == 0) {
+  if ((val & TUPLE_TAG) == 0) {
     printf("%lld", ((int64_t)(val)) / 2); // shift bits right to remove tag
   } else if (val == BOOL_TRUE) {
     printf("true");
   } else if (val == BOOL_FALSE) {
     printf("false");
-  } else if (val == PAIR_TAG) {
-    // Equivalent to null pointer, after removing tag
-    printf("()");
-  } else if ((val & PAIR_TAG) == 1) {
+  } else if ((val & TUPLE_TAG) == 1) {
     // Remove tag from pair pointer
-    hugorm_val *pair = (hugorm_val *)(val - PAIR_TAG);
+    hugorm_val *tuple = (hugorm_val *)(val - TUPLE_TAG);
+    uint64_t size = ((int64_t)(tuple[0]));
 
-    printf("(");
-    _print(pair[0]);
-    printf(", ");
-    _print(pair[1]);
-    printf(")");
+    printf("{");
+    for (uint64_t i = 0; i < size; i++) {
+      if (i > 0) {
+        printf(", ");
+      }
+      _print(tuple[i+1]);
+    }
+    printf("}");
+
   } else {
     printf("Unknown value: %#018llx", val); // print unknown val in hex
   }
