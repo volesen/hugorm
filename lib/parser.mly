@@ -29,9 +29,11 @@
 
 %token COMMA
 
-%token FST
-%token SND
-%token NIL
+%token LEFT_CURLY
+%token RIGHT_CURLY
+
+%token LEFT_BRACKET
+%token RIGHT_BRACKET
 
 %token LEFT_PAREN
 %token RIGHT_PAREN
@@ -44,7 +46,8 @@
 %left LT LEQ GT GEQ
 %left PLUS MINUS 
 %left STAR
-%left FST SND
+%nonassoc UMINUS
+%nonassoc LEFT_BRACKET
 
 %start program
 
@@ -68,7 +71,6 @@ params:
   | LEFT_PAREN; params=separated_list(COMMA, ID); RIGHT_PAREN { params }
 
 expr:
-  | NIL; { ENil () }
   | LEFT_PAREN; e=expr; RIGHT_PAREN { e }
   | i=INT { ENumber(i, ()) }
   | TRUE { EBool(true, ()) }
@@ -76,18 +78,17 @@ expr:
   | x=ID { EId(x, ()) }
   | LET; x=ID; EQ; b=expr; IN; e=expr { ELet(x, b, e, ()) }
   | IF; cond=expr; THEN; thn=expr; ELSE; els=expr { EIf(cond, thn, els, ()) }
-  | op=prim1; e=expr; { EPrim1(op, e, ()) }
+  | op=prim1; e=expr %prec UMINUS { EPrim1(op, e, ()) }
   | l=expr; op=prim2; r=expr { EPrim2(op, l, r, ()) }
   | f=ID; args=args { EApp(f, args, ()) }
-  | LEFT_PAREN; fst=expr; COMMA; snd=expr; RIGHT_PAREN { EPair(fst, snd, ()) }
+  | LEFT_CURLY; elements=separated_list(COMMA, expr); RIGHT_CURLY { ETuple(elements, ())}
+  | tuple=expr; LEFT_BRACKET; index=expr; RIGHT_BRACKET { EGetItem(tuple, index, ()) }
 
 args: 
   | LEFT_PAREN; args=separated_list(COMMA, expr); RIGHT_PAREN { args }
 
 %inline prim1:
   | MINUS { Neg }
-  | FST { Fst }
-  | SND { Snd }
 
 %inline prim2:
   | PLUS { Add }

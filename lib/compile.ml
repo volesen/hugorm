@@ -13,7 +13,7 @@ let const_true = Const 0xFFFFFFFFFFFFFFFFL
 let const_false = Const 0x7FFFFFFFFFFFFFFFL
 let bool_mask = Const 0x8000000000000000L
 let bool_tag = Const 0x0000000000000003L
-let pair_tag = Const 0x0000000000000001L
+let tuple_tag = Const 0x0000000000000001L
 let scratch_reg = Reg R11
 let heap_reg = Reg R15
 
@@ -22,7 +22,7 @@ let count_let (e : 'a aexpr) =
     match cexpr with
     | CIf (_, l, r, _) -> max (count_let_aexpr l) (count_let_aexpr r)
     (* Only contain immediate expression *)
-    | CImmExpr _ | CPrim1 _ | CPrim2 _ | CApp _ | CPair _ -> 0
+    | CImmExpr _ | CPrim1 _ | CPrim2 _ | CApp _ | CTuple _ | CGetItem _ -> 0
   and count_let_aexpr (aexpr : 'a aexpr) =
     match aexpr with
     | ALet (_, bind, body, _) ->
@@ -42,7 +42,6 @@ let fresh_label ?(prefix = "L") tag = prefix ^ string_of_int tag
 
 let compile_immexpr (env : env) (immexpr : 'a immexpr) : arg =
   match immexpr with
-  | ImmNil _ -> pair_tag
   | ImmNum (n, _) ->
       if n > max_int || n < min_int then raise Integer_overflow
       else Const (Int64.shift_left n 1)
@@ -59,9 +58,11 @@ let rec compile_cexpr (env : env) (stack_index : int) (cexpr : tag cexpr) : asm
   | CPrim1 (op, e, _) -> compile_cprim1 env op e
   | CPrim2 (op, l, r, tag) -> compile_cprim2 env op l r tag
   | CIf (cond, thn, els, tag) -> compile_cif env stack_index cond thn els tag
-  | CApp (("print" as f), args, _) -> compile_native_call env f args
+  | CApp ((("print" | "length") as f), args, _) ->
+      compile_native_call env f args
   | CApp (f, args, _) -> compile_capp env f args
-  | CPair (fst, snd, _) -> compile_cpair env fst snd
+  | CTuple (elements, _) -> compile_ctuple env elements
+  | CGetItem (tuple, index, _) -> compile_cgetitem env tuple index
 
 and compile_cimmexpr env immexpr =
   let arg = compile_immexpr env immexpr in
@@ -73,8 +74,6 @@ and compile_cprim1_op op =
   match op with
   | Neg -> [ INeg (Reg RAX) ]
   | Not -> [ IMov (scratch_reg, bool_mask); IXor (Reg RAX, scratch_reg) ]
-  | Fst -> [ ISub (Reg RAX, pair_tag); IMov (Reg RAX, RegOffset (RAX, 0)) ]
-  | Snd -> [ ISub (Reg RAX, pair_tag); IMov (Reg RAX, RegOffset (RAX, 8)) ]
 
 and compile_cprim2 env op l r tag =
   let l_arg = compile_immexpr env l in
@@ -140,22 +139,54 @@ and compile_native_call env f args =
   | "print", [ e ] ->
       let e_imm = compile_immexpr env e in
       [ IMov (Reg RDI, e_imm); ICall "print" ]
+  | "length", [ tuple ] ->
+      compile_cimmexpr env tuple
+      @ [
+          ISub (Reg RAX, tuple_tag);
+          IMov (Reg RAX, RegOffset (RAX, 0));
+          ISal (Reg RAX, Const 1L);
+        ]
   | _ -> raise (Argument_mismatch ("Invalid native call: " ^ f))
 
-and compile_cpair env fst snd =
-  let fst_arg = compile_immexpr env fst in
-  let snd_arg = compile_immexpr env snd in
+and compile_ctuple env elements =
+  let size = List.length elements in
+  (* We need to maintain the invariant, that *)
+  let padded_size = if size mod 2 = 0 then size + 1 else size in
+  let move_elements_asm =
+    elements
+    |> List.mapi (fun i element ->
+           let arg = compile_immexpr env element in
+           [
+             IMov (scratch_reg, arg);
+             IMov (RegOffset (R15, 8 * (i + 1)), scratch_reg);
+           ])
+    |> List.concat
+  in
   [
-    (* Move values on heap *)
-    IMov (scratch_reg, fst_arg);
+    (* Move size and value on the heap *)
+    IMov (scratch_reg, Const (Int64.of_int size));
     IMov (RegOffset (R15, 0), scratch_reg);
-    IMov (scratch_reg, snd_arg);
-    IMov (RegOffset (R15, 8), scratch_reg);
-    (* Tag the pair *)
-    IMov (Reg RAX, heap_reg);
-    IAdd (Reg RAX, pair_tag);
-    (* Bump the header pointer *)
-    IAdd (heap_reg, Const 16L);
+  ]
+  @ move_elements_asm
+  @ [
+      (* Tag the tuple *)
+      IMov (Reg RAX, heap_reg);
+      IAdd (Reg RAX, tuple_tag);
+      (* Bump the header pointer *)
+      IAdd (heap_reg, Const (Int64.of_int (8 * padded_size)));
+    ]
+
+and compile_cgetitem env tuple index =
+  let tuple_arg = compile_immexpr env tuple in
+  let index_arg = compile_immexpr env index in
+  [
+    IMov (Reg RAX, tuple_arg);
+    (* Untag the tuple pointer *)
+    ISub (Reg RAX, tuple_tag);
+    (* Make a pointer *)
+    IMov (scratch_reg, index_arg);
+    ISar (scratch_reg, Const 1L);
+    IMov (Reg RAX, RegBaseOffset (RAX, R11, 8, 8));
   ]
 
 and compile_aexpr env stack_index aexpr =

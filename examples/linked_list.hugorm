@@ -1,18 +1,27 @@
-def cons(x, pair)
-    (x, pair)
+def is_nil(lst)
+	length(lst) = 0
 in
 
-def is_nil(x)
-  x = nil
+def cons(x, lst)
+	{x, lst}
 in
 
-def last(lst)
-  let rest = #2 lst in
-  if is_nil(rest)
-    then #1 lst
-    else last(rest)
+def head(lst)
+	lst[0]
 in
 
-last(
-    cons(3, cons(2, cons(1, nil)))
-)
+def tail(lst)
+	lst[1]
+in
+
+def loop(tuple, idx)
+	if idx < 0
+		then {}
+		else { tuple[idx], loop(tuple, idx - 1) }
+in
+
+def linked_list_of_tuple(tuple)
+	loop(tuple, length(tuple) - 1)
+in
+
+linked_list_of_tuple({1, 2, 3, 4, 5})
