@@ -9,9 +9,10 @@ and 'a expr =
   | EId of string * 'a
   | ELet of string * 'a expr * 'a expr * 'a
   | EIf of 'a expr * 'a expr * 'a expr * 'a
-  | EApp of string * 'a expr list * 'a
+  | EApp of 'a expr * 'a expr list * 'a
   | ETuple of 'a expr list * 'a
   | EGetItem of 'a expr * 'a expr * 'a
+  | ELambda of string list * 'a expr * 'a
 
 and prim1 = Neg | Not
 and prim2 = Add | Sub | Mul | And | Or | Lt | Gt | Leq | Geq | Eq | Ne
@@ -30,6 +31,7 @@ let tag_of_expr (e : 'a expr) : 'a =
   | EApp (_, _, tag) -> tag
   | ETuple (_, tag) -> tag
   | EGetItem (_, _, tag) -> tag
+  | ELambda (_, _, tag) -> tag
 
 let rec tag_program (prog : 'a program) : tag program =
   let decls, tag = tag_decls prog.decls 0 in
@@ -73,9 +75,10 @@ and tag_expr e tag =
       let thn, tag = tag_expr thn tag in
       let els, tag = tag_expr els tag in
       (EIf (cond, thn, els, tag), tag + 1)
-  | EApp (name, args, _) ->
+  | EApp (f, args, _) ->
+      let f, tag = tag_expr f tag in
       let args, tag = tag_args args tag in
-      (EApp (name, args, tag), tag + 1)
+      (EApp (f, args, tag), tag + 1)
   | ETuple (elements, _) ->
       let elements, tag = tag_args elements tag in
       (ETuple (elements, tag), tag + 1)
@@ -83,6 +86,9 @@ and tag_expr e tag =
       let tuple, tag = tag_expr tuple tag in
       let index, tag = tag_expr index tag in
       (EGetItem (tuple, index, tag), tag + 1)
+  | ELambda (params, body, _) ->
+      let body, tag = tag_expr body tag in
+      (ELambda (params, body, tag), tag + 1)
 
 and tag_args args tag =
   let args, tag =
