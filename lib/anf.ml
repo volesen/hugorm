@@ -8,9 +8,10 @@ and 'a cexpr =
   | CIf of 'a immexpr * 'a aexpr * 'a aexpr * 'a
   | CPrim1 of prim1 * 'a immexpr * 'a
   | CPrim2 of prim2 * 'a immexpr * 'a immexpr * 'a
-  | CApp of string * 'a immexpr list * 'a
+  | CApp of 'a immexpr * 'a immexpr list * 'a
   | CTuple of 'a immexpr list * 'a
   | CGetItem of 'a immexpr * 'a immexpr * 'a
+  | CLambda of string list * 'a aexpr * 'a
   | CImmExpr of 'a immexpr
 
 and 'a immexpr =
@@ -49,9 +50,10 @@ let anf (e : tag expr) : unit aexpr =
         let body_cexpr, body_ctx = help_c body in
         (body_cexpr, e_ctx @ [ (x, e_cexpr) ] @ body_ctx)
     | EApp (f, args, _) ->
-        let arg_imms, ctxs = args |> List.map help_i |> List.split in
-        let ctx = List.concat ctxs in
-        (CApp (f, arg_imms, ()), ctx)
+        let f_imm, f_ctx = help_i f in
+        let arg_imms, arg_ctxs = args |> List.map help_i |> List.split in
+        let args_ctx = List.concat arg_ctxs in
+        (CApp (f_imm, arg_imms, ()), f_ctx @ args_ctx)
     | ETuple (elements, _) ->
         let element_imms, ctxs = elements |> List.map help_i |> List.split in
         let ctx = List.concat ctxs in
@@ -60,13 +62,16 @@ let anf (e : tag expr) : unit aexpr =
         let tuple_imm, tuple_ctx = help_i tuple in
         let index_imm, index_ctx = help_i index in
         (CGetItem (tuple_imm, index_imm, ()), tuple_ctx @ index_ctx)
+    | ELambda (params, body, _) ->
+        let body_aexpr = help_a body in
+        (CLambda (params, body_aexpr, ()), [])
   and help_i (e : tag expr) : unit immexpr * ctx =
     match e with
     | ENumber (n, _) -> (ImmNum (n, ()), [])
     | EBool (b, _) -> (ImmBool (b, ()), [])
     | EId (x, _) -> (ImmId (x, ()), [])
-    | (EPrim1 _ | EPrim2 _ | EIf _ | ELet _ | EApp _ | ETuple _ | EGetItem _) as
-      e ->
+    | ( EPrim1 _ | EPrim2 _ | EIf _ | ELet _ | EApp _ | ETuple _ | EGetItem _
+      | ELambda _ ) as e ->
         imm_of_cexpr e
   and imm_of_cexpr (e : tag expr) : unit immexpr * ctx =
     let tag = tag_of_expr e in
@@ -117,6 +122,7 @@ let tag (e : unit aprogram) : tag aprogram =
         let r, tag = tag_immexpr r tag in
         (CPrim2 (op, l, r, tag), tag + 1)
     | CApp (f, args, ()) ->
+        let f, tag = tag_immexpr f tag in
         let args, tag =
           List.fold_right
             (fun arg (args, tag) ->
@@ -138,6 +144,9 @@ let tag (e : unit aprogram) : tag aprogram =
         let tuple, tag = tag_immexpr tuple tag in
         let index, tag = tag_immexpr index tag in
         (CGetItem (tuple, index, tag), tag + 1)
+    | CLambda (params, body, _) ->
+        let body, tag = tag_aexpr body tag in
+        (CLambda (params, body, tag), tag + 1)
     | CImmExpr e ->
         let e, tag = tag_immexpr e tag in
         (CImmExpr e, tag + 1)
