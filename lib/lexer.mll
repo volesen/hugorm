@@ -27,6 +27,8 @@ rule read =
   | "let"    { LET }
   | "in"     { IN }
   | "def"    { DEF }
+  | "lambda" { LAMBDA }
+  | "->"     { ARROW }
   | '+'      { PLUS }
   | '-'      { MINUS }
   | '*'      { STAR }

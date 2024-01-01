@@ -17,6 +17,9 @@
 
 %token DEF
 
+%token LAMBDA
+%token ARROW
+
 %token PLUS
 %token MINUS
 %token STAR
@@ -40,6 +43,7 @@
 
 %token EOF
 
+%nonassoc ARROW
 %nonassoc IN
 %nonassoc ELSE
 %right EQ NE
@@ -48,16 +52,11 @@
 %left STAR
 %nonassoc UMINUS
 %nonassoc LEFT_BRACKET
+%nonassoc LEFT_PAREN
 
 %start program
 
 %type <unit program> program
-%type <unit decl> decl
-%type <string list> params
-%type <unit expr> expr
-%type <unit expr list> args
-%type <prim1> prim1
-%type <prim2> prim2
 
 %%
 
@@ -80,9 +79,10 @@ expr:
   | IF; cond=expr; THEN; thn=expr; ELSE; els=expr { EIf(cond, thn, els, ()) }
   | op=prim1; e=expr %prec UMINUS { EPrim1(op, e, ()) }
   | l=expr; op=prim2; r=expr { EPrim2(op, l, r, ()) }
-  | f=ID; args=args { EApp(f, args, ()) }
+  | f=expr; args=args { EApp(f, args, ()) }
   | LEFT_CURLY; elements=separated_list(COMMA, expr); RIGHT_CURLY { ETuple(elements, ())}
   | tuple=expr; LEFT_BRACKET; index=expr; RIGHT_BRACKET { EGetItem(tuple, index, ()) }
+  | LAMBDA; params=params; ARROW; body=expr { ELambda(params, body, ()) }
 
 args: 
   | LEFT_PAREN; args=separated_list(COMMA, expr); RIGHT_PAREN { args }

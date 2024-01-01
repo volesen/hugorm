@@ -1,0 +1,3 @@
+let add = lambda(x, y) -> x + y in
+let incr = lambda(x) -> add(x, 1) in
+incr(42)
