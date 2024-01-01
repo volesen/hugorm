@@ -1,7 +1,7 @@
 open Anf
 module S = Set.Make (String)
 
-let fvs (aexpr : 'a aexpr) : string list =
+let fvs (aexpr : 'a aexpr): S.t =
   let rec fvs_i imm =
     match imm with
     | ImmNum _ | ImmBool _ -> S.empty
@@ -25,4 +25,4 @@ let fvs (aexpr : 'a aexpr) : string list =
         S.union (fvs_c cexpr) (S.remove x (fvs_a aexpr))
     | ACExpr cexpr -> fvs_c cexpr
   in
-  S.elements (fvs_a aexpr)
+  fvs_a aexpr
