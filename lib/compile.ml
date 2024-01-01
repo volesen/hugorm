@@ -1,10 +1,21 @@
 open Syntax
 open Anf
 open Asm
+open Fvs
 
 exception Integer_overflow
 exception Unreachable of string
+exception Unbound of string
 exception Argument_mismatch of string
+
+let string_of_env env =
+  env
+  |> List.map (fun (name, slot) -> name ^ " -> " ^ string_of_int slot)
+  |> String.concat "\n"
+
+let find x env =
+  try List.assoc x env
+  with Not_found -> raise (Unbound (x ^ "\n" ^ string_of_env env))
 
 let entry_label = "our_code_starts_here"
 let min_int = Int64.div Int64.min_int 2L
@@ -14,6 +25,7 @@ let const_false = Const 0x7FFFFFFFFFFFFFFFL
 let bool_mask = Const 0x8000000000000000L
 let bool_tag = Const 0x0000000000000003L
 let tuple_tag = Const 0x0000000000000001L
+let closure_tag = Const 0x0000000000000005L
 let scratch_reg = Reg R11
 let heap_reg = Reg R15
 
@@ -22,7 +34,10 @@ let count_let (e : 'a aexpr) =
     match cexpr with
     | CIf (_, l, r, _) -> max (count_let_aexpr l) (count_let_aexpr r)
     (* Only contain immediate expression *)
-    | CImmExpr _ | CPrim1 _ | CPrim2 _ | CApp _ | CTuple _ | CGetItem _ -> 0
+    | CImmExpr _ | CPrim1 _ | CPrim2 _ | CApp _ | CTuple _ | CGetItem _
+    (* TODO: Think about this case *)
+    | CLambda _ ->
+        0
   and count_let_aexpr (aexpr : 'a aexpr) =
     match aexpr with
     | ALet (_, bind, body, _) ->
@@ -48,7 +63,7 @@ let compile_immexpr (env : env) (immexpr : 'a immexpr) : arg =
   | ImmBool (true, _) -> const_true
   | ImmBool (false, _) -> const_false
   | ImmId (x, _) ->
-      let slot = List.assoc x env in
+      let slot = find x env in
       RegOffset (RBP, slot)
 
 let rec compile_cexpr (env : env) (stack_index : int) (cexpr : tag cexpr) : asm
@@ -58,11 +73,11 @@ let rec compile_cexpr (env : env) (stack_index : int) (cexpr : tag cexpr) : asm
   | CPrim1 (op, e, _) -> compile_cprim1 env op e
   | CPrim2 (op, l, r, tag) -> compile_cprim2 env op l r tag
   | CIf (cond, thn, els, tag) -> compile_cif env stack_index cond thn els tag
-  | CApp ((("print" | "length") as f), args, _) ->
-      compile_native_call env f args
   | CApp (f, args, _) -> compile_capp env f args
   | CTuple (elements, _) -> compile_ctuple env elements
   | CGetItem (tuple, index, _) -> compile_cgetitem env tuple index
+  | CLambda (params, body, tag) ->
+      compile_clambda env stack_index params body tag
 
 and compile_cimmexpr env immexpr =
   let arg = compile_immexpr env immexpr in
@@ -118,7 +133,7 @@ and compile_cif env stack_index cond thn els tag =
   @ [ ILabel end_label ]
 
 and compile_capp env f args =
-  let allocated = 8 * List.length args in
+  let allocated = 8 * (1 + List.length args) in
   let padding = stack_alignment_padding allocated in
   let push_args_asm =
     args |> List.rev
@@ -132,21 +147,19 @@ and compile_capp env f args =
     if padding <> 0 then [ ISub (Reg RSP, Const (Int64.of_int padding)) ]
     else []
   in
-  align_stack_asm @ push_args_asm @ [ ICall f ] @ pop_args_asm
-
-and compile_native_call env f args =
-  match (f, args) with
-  | "print", [ e ] ->
-      let e_imm = compile_immexpr env e in
-      [ IMov (Reg RDI, e_imm); ICall "print" ]
-  | "length", [ tuple ] ->
-      compile_cimmexpr env tuple
-      @ [
-          ISub (Reg RAX, tuple_tag);
-          IMov (Reg RAX, RegOffset (RAX, 0));
-          ISal (Reg RAX, Const 1L);
-        ]
-  | _ -> raise (Argument_mismatch ("Invalid native call: " ^ f))
+  align_stack_asm @ push_args_asm @ compile_cimmexpr env f
+  @ [
+      (* Remove the tag *)
+      ISub (Reg RAX, closure_tag);
+      (* Get the environment pointer *)
+      IMov (scratch_reg, Reg RAX);
+      IAdd (scratch_reg, Const 8L);
+      (* Push the environment pointer *)
+      IPush scratch_reg;
+      (* Call the function *)
+      ICall (RegOffset (RAX, 0));
+    ]
+  @ pop_args_asm
 
 and compile_ctuple env elements =
   let size = List.length elements in
@@ -188,6 +201,82 @@ and compile_cgetitem env tuple index =
     ISar (scratch_reg, Const 1L);
     IMov (Reg RAX, RegBaseOffset (RAX, R11, 8, 8));
   ]
+
+and compile_closure env fvs label =
+  [
+    IMov (Reg RAX, heap_reg);
+    (* Store function pointer *)
+    ILea (scratch_reg, Label label);
+    IMov (RegOffset (RAX, 0), scratch_reg);
+  ]
+  (* Store the env *)
+  @ (fvs
+    |> List.mapi (fun i fv ->
+           let slot = find fv env in
+           [
+             IMov (scratch_reg, RegOffset (RBP, slot));
+             IMov (RegOffset (RAX, 8 * (i + 1)), scratch_reg);
+           ])
+    |> List.concat)
+  @ [
+      (* Tag the closure *)
+      IAdd (Reg RAX, closure_tag);
+      (* Bump the header pointer. TODO: align *)
+      IAdd (heap_reg, Const (Int64.of_int (16 * (1 + List.length fvs))));
+    ]
+
+and compile_lambda_body env stack_index fvs params body =
+  let frame_size =
+    let max_stack_size = (8 * count_let body) + (8 * List.length fvs) in
+    max_stack_size + stack_alignment_padding max_stack_size
+  in
+  (* Destruct the environment *)
+  let env = List.mapi (fun i param -> (param, (i + 3) * 8)) params @ env in
+  let env, destruct_env_asm, _ =
+    fvs
+    |> List.fold_left
+         (fun (env, asm, i) fv ->
+           (* Move the value from the environment to the stack, and bind it to the
+              name *)
+           let slot = stack_index - (8 * (i + 1)) in
+           let env' = (fv, slot) :: env in
+           let asm' =
+             asm
+             @ [
+                 IMov (scratch_reg, RegOffset (RAX, 8 * i));
+                 IMov (RegOffset (RBP, slot), scratch_reg);
+               ]
+           in
+           (env', asm', i + 1))
+         (env, [], 0)
+  in
+  [
+    IPush (Reg RBP);
+    IMov (Reg RBP, Reg RSP);
+    ISub (Reg RSP, Const (Int64.of_int frame_size));
+    (* Get environment pointer, which is the first argument *)
+    IMov (Reg RAX, RegOffset (RBP, 16));
+  ]
+  @ destruct_env_asm
+  @ compile_aexpr env (stack_index + (8 * List.length fvs)) body
+  @ [ IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet ]
+
+and compile_clambda env stack_index params body tag =
+  (*
+    1. Compile the body as a function
+      1.1 Inside the body, destruct the environment
+    2. Build the closure
+      2.2 Set the function pointer
+      2.3 Set the environment pointer  
+    3. Tag the closure pointer and return it
+  *)
+  let fvs = S.elements (S.diff (fvs body) (S.of_list params)) in
+  let lambda_label = fresh_label ~prefix:"lambda" tag in
+  let lambda_end_label = fresh_label ~prefix:"lambda_end" tag in
+  [ IJmp lambda_end_label; ILabel lambda_label ]
+  @ compile_lambda_body env stack_index fvs params body
+  @ [ ILabel lambda_end_label ]
+  @ compile_closure env fvs lambda_label
 
 and compile_aexpr env stack_index aexpr =
   match aexpr with
