@@ -8,15 +8,7 @@ exception Unreachable of string
 exception Unbound of string
 exception Argument_mismatch of string
 
-let string_of_env env =
-  env
-  |> List.map (fun (name, slot) -> name ^ " -> " ^ string_of_int slot)
-  |> String.concat "\n"
-
-let find x env =
-  try List.assoc x env
-  with Not_found -> raise (Unbound (x ^ "\n" ^ string_of_env env))
-
+let find x env = try List.assoc x env with Not_found -> raise (Unbound x)
 let entry_label = "our_code_starts_here"
 let min_int = Int64.div Int64.min_int 2L
 let max_int = Int64.div Int64.max_int 2L
@@ -262,14 +254,6 @@ and compile_lambda_body env stack_index fvs params body =
   @ [ IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet ]
 
 and compile_clambda env stack_index params body tag =
-  (*
-    1. Compile the body as a function
-      1.1 Inside the body, destruct the environment
-    2. Build the closure
-      2.2 Set the function pointer
-      2.3 Set the environment pointer  
-    3. Tag the closure pointer and return it
-  *)
   let fvs = S.elements (S.diff (fvs body) (S.of_list params)) in
   let lambda_label = fresh_label ~prefix:"lambda" tag in
   let lambda_end_label = fresh_label ~prefix:"lambda_end" tag in
@@ -278,34 +262,7 @@ and compile_clambda env stack_index params body tag =
   @ [ ILabel lambda_end_label ]
   @ compile_closure env fvs lambda_label
 
-and compile_aexpr env stack_index aexpr =
-  match aexpr with
-  | ACExpr cexpr -> compile_cexpr env stack_index cexpr
-  | ALet (x, bind, body, _) ->
-      let stack_index' = stack_index - 8 in
-      let env' = (x, stack_index') :: env in
-      compile_cexpr env stack_index bind
-      @ [ IMov (RegOffset (RBP, stack_index'), Reg RAX) ]
-      @ compile_aexpr env' stack_index' body
-
-let compile_adecl (adecl : 'a adecl) : asm =
-  match adecl with
-  | ADFun (name, params, body, _) ->
-      let frame_size =
-        let max_stack_size = 8 * count_let body in
-        max_stack_size + stack_alignment_padding max_stack_size
-      in
-      let env = List.mapi (fun i param -> (param, (i + 2) * 8)) params in
-      [
-        ILabel name;
-        IPush (Reg RBP);
-        IMov (Reg RBP, Reg RSP);
-        ISub (Reg RSP, Const (Int64.of_int frame_size));
-      ]
-      @ compile_aexpr env 0 body
-      @ [ IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet ]
-
-let compile_body (body : tag aexpr) : asm =
+and compile_body (body : tag aexpr) : asm =
   let frame_size =
     let max_stack_size = 8 * count_let body in
     max_stack_size + stack_alignment_padding max_stack_size
@@ -321,11 +278,26 @@ let compile_body (body : tag aexpr) : asm =
   @ compile_aexpr empty_env 0 body
   @ [ IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet ]
 
+and compile_aexpr env stack_index aexpr =
+  match aexpr with
+  | ACExpr cexpr -> compile_cexpr env stack_index cexpr
+  | ALet (x, bind, body, _) ->
+      let stack_index' = stack_index - 8 in
+      let env' = (x, stack_index') :: env in
+      compile_cexpr env stack_index bind
+      @ [ IMov (RegOffset (RBP, stack_index'), Reg RAX) ]
+      @ compile_aexpr env' stack_index' body
+
+let compile_adecl (adecl : 'a adecl) : asm =
+  match adecl with
+  | ADFun (_, params, body, tag) -> compile_clambda empty_env 0 params body tag
+
 let compile_aprog (aprog : 'a aprogram) : asm =
   let decls_asm = List.concat_map compile_adecl aprog.decls in
   let body_asm = compile_body aprog.body in
   [ ISection "text"; IExtern "error"; IExtern "print"; IGlobal entry_label ]
   @ body_asm @ decls_asm
+
 
 let compile (prog : unit program) : asm =
   let tagged = Syntax.tag prog in
