@@ -1,0 +1,10 @@
+let fact =
+  lambda(n) ->
+    let rec fact =
+      lambda(n, acc) ->
+        if n = 0 then acc
+        else fact(n - 1, n * acc)
+    in
+      fact(n, 1)
+in
+  fact(5)

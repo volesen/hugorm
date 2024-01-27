@@ -1,8 +1,12 @@
 open Syntax
 
-type 'a aprogram = { decls : 'a adecl list; body : 'a aexpr }
+type 'a aprogram = { decls : 'a adecl list; body : 'a aexpr } [@@deriving show]
 and 'a adecl = ADFun of string * string list * 'a aexpr * 'a
-and 'a aexpr = ALet of string * 'a cexpr * 'a aexpr * 'a | ACExpr of 'a cexpr
+
+and 'a aexpr =
+  | ALet of string * 'a cexpr * 'a aexpr * 'a
+  | ALetRec of string * 'a cexpr * 'a aexpr * 'a
+  | ACExpr of 'a cexpr
 
 and 'a cexpr =
   | CIf of 'a immexpr * 'a aexpr * 'a aexpr * 'a
@@ -19,14 +23,15 @@ and 'a immexpr =
   | ImmBool of bool * 'a
   | ImmId of string * 'a
 
-type ctx = (string * unit cexpr) list
+type ctx = (string * unit cexpr * bool) list
 
 let anf (e : tag expr) : unit aexpr =
   let rec help_a (e : tag expr) : unit aexpr =
     let cexpr, bindings = help_c e in
     (* Enclose `cexpr` in nested let-bindings *)
     List.fold_right
-      (fun (x, e) body -> ALet (x, e, body, ()))
+      (fun (x, e, is_rec) body ->
+        if is_rec then ALetRec (x, e, body, ()) else ALet (x, e, body, ()))
       bindings (ACExpr cexpr)
   and help_c (e : tag expr) : unit cexpr * ctx =
     match e with
@@ -48,7 +53,7 @@ let anf (e : tag expr) : unit aexpr =
     | ELet (x, e, body, _) ->
         let e_cexpr, e_ctx = help_c e in
         let body_cexpr, body_ctx = help_c body in
-        (body_cexpr, e_ctx @ [ (x, e_cexpr) ] @ body_ctx)
+        (body_cexpr, e_ctx @ [ (x, e_cexpr, false) ] @ body_ctx)
     | EApp (f, args, _) ->
         let f_imm, f_ctx = help_i f in
         let arg_imms, arg_ctxs = args |> List.map help_i |> List.split in
@@ -65,19 +70,24 @@ let anf (e : tag expr) : unit aexpr =
     | ELambda (params, body, _) ->
         let body_aexpr = help_a body in
         (CLambda (params, body_aexpr, ()), [])
+    | ELetRec (x, e, body, _) ->
+        let e_cexpr, e_ctx = help_c e in
+        let body_cexpr, body_ctx = help_c body in
+        (body_cexpr, e_ctx @ [ (x, e_cexpr, true) ] @ body_ctx)
   and help_i (e : tag expr) : unit immexpr * ctx =
     match e with
     | ENumber (n, _) -> (ImmNum (n, ()), [])
     | EBool (b, _) -> (ImmBool (b, ()), [])
     | EId (x, _) -> (ImmId (x, ()), [])
     | ( EPrim1 _ | EPrim2 _ | EIf _ | ELet _ | EApp _ | ETuple _ | EGetItem _
-      | ELambda _ ) as e ->
+      | ELambda _ | ELetRec _ ) as e ->
         imm_of_cexpr e
   and imm_of_cexpr (e : tag expr) : unit immexpr * ctx =
     let tag = tag_of_expr e in
     let x = "x" ^ string_of_int tag in
     let cexpr, ctx = help_c e in
-    (ImmId (x, ()), ctx @ [ (x, cexpr) ])
+    let is_rec = match e with ELetRec _ -> true | _ -> false in
+    (ImmId (x, ()), ctx @ [ (x, cexpr, is_rec) ])
   in
   help_a e
 
@@ -104,6 +114,10 @@ let tag (e : unit aprogram) : tag aprogram =
         let e, tag = tag_cexpr e tag in
         let body, tag = tag_aexpr body tag in
         (ALet (x, e, body, tag), tag + 1)
+    | ALetRec (x, e, body, ()) ->
+        let e, tag = tag_cexpr e tag in
+        let body, tag = tag_aexpr body tag in
+        (ALetRec (x, e, body, tag), tag + 1)
     | ACExpr cexpr ->
         let cexpr, tag = tag_cexpr cexpr tag in
         (ACExpr cexpr, tag + 1)

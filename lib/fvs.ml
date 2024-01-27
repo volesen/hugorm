@@ -1,7 +1,7 @@
 open Anf
 module S = Set.Make (String)
 
-let fvs (aexpr : 'a aexpr): S.t =
+let fvs (aexpr : 'a aexpr) : S.t =
   let rec fvs_i imm =
     match imm with
     | ImmNum _ | ImmBool _ -> S.empty
@@ -23,6 +23,8 @@ let fvs (aexpr : 'a aexpr): S.t =
     match aexpr with
     | ALet (x, cexpr, aexpr, _) ->
         S.union (fvs_c cexpr) (S.remove x (fvs_a aexpr))
+    | ALetRec (x, cexpr, aexpr, _) ->
+        S.remove x (S.union (fvs_c cexpr) (fvs_a aexpr))
     | ACExpr cexpr -> fvs_c cexpr
   in
   fvs_a aexpr

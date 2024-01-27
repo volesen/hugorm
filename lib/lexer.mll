@@ -25,6 +25,7 @@ rule read =
   | "then"   { THEN }
   | "else"   { ELSE }
   | "let"    { LET }
+  | "rec"    { REC }
   | "in"     { IN }
   | "def"    { DEF }
   | "lambda" { LAMBDA }

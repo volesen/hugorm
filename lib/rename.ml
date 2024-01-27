@@ -53,4 +53,9 @@ and rename_expr (env : env) expr =
             ((param, param') :: env, param' :: params))
           (env, []) params
       in
+      let params = List.rev params in
       ELambda (params, rename_expr env body, tag)
+  | ELetRec (x, e, b, tag) ->
+      let x' = gen_id x tag in
+      let env' = (x, x') :: env in
+      ELetRec (x', rename_expr env' e, rename_expr env' b, tag)
