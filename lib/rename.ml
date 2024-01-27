@@ -7,7 +7,7 @@ let empty_env = []
 
 exception UnboundId of string
 
-let gen_id id tag = id ^ string_of_int tag
+let gen_id id tag = id ^ "@" ^ string_of_int tag
 
 let rec rename_program (prog : tag program) : tag program =
   let decls = rename_decls prog.decls in
@@ -45,7 +45,6 @@ and rename_expr (env : env) expr =
   | EGetItem (tuple, index, tag) ->
       EGetItem (rename_expr env tuple, rename_expr env index, tag)
   | ELambda (params, body, tag) ->
-      (* TODO: rename arguments *)
       let env, params =
         List.fold_left
           (fun (env, params) param ->
