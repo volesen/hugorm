@@ -21,6 +21,7 @@ type arg =
   | Reg of reg64
   | RegOffset of reg64 * int (* E.g. [RBP-8] *)
   | RegBaseOffset of reg64 * reg64 * int * int (* E.g. [RAX+R11*8+8] *)
+  | Label of string
 
 type instruction =
   (* Directives *)
@@ -29,6 +30,7 @@ type instruction =
   | IExtern of string
   (* Data movement *)
   | IMov of arg * arg
+  | ILea of arg * arg
   | IPush of arg
   | IPop of arg
   (* Arithmetic and logic *)
@@ -56,7 +58,7 @@ type instruction =
   | ICmp of arg * arg
   | ITest of arg * arg
   (* Function calling *)
-  | ICall of string
+  | ICall of arg
   | IRet
 
 type asm = instruction list
@@ -94,6 +96,7 @@ let string_of_arg (arg : arg) : string =
   | RegBaseOffset (reg1, reg2, scale, offset) ->
       Format.sprintf "[%s+%s*%d%+d]" (string_of_reg reg1) (string_of_reg reg2)
         scale offset
+  | Label label -> label
 
 let string_of_instruction (instr : instruction) : string =
   let string_of_unary_op op arg =
@@ -107,6 +110,9 @@ let string_of_instruction (instr : instruction) : string =
   | IGlobal label -> "  global " ^ label
   | IExtern label -> "  extern " ^ label
   | IMov (arg1, arg2) -> string_of_binary_op "mov" arg1 arg2
+  | ILea (arg1, arg2) ->
+      Format.sprintf "  lea %s, [rel %s]" (string_of_arg arg1)
+        (string_of_arg arg2)
   | IPush arg -> string_of_unary_op "push" arg
   | IPop arg -> string_of_unary_op "pop" arg
   | INeg arg -> string_of_unary_op "neg" arg
@@ -130,7 +136,7 @@ let string_of_instruction (instr : instruction) : string =
   | IJnz label -> "  jnz " ^ label
   | ICmp (arg1, arg2) -> string_of_binary_op "cmp" arg1 arg2
   | ITest (arg1, arg2) -> string_of_binary_op "test" arg1 arg2
-  | ICall label -> "  call " ^ label
+  | ICall arg -> string_of_unary_op "call" arg
   | IRet -> "  ret"
 
 let string_of_asm (asm : asm) : string =

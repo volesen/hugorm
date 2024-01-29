@@ -7,7 +7,7 @@ let empty_env = []
 
 exception UnboundId of string
 
-let gen_id id tag = id ^ string_of_int tag
+let gen_id id tag = id ^ "@" ^ string_of_int tag
 
 let rec rename_program (prog : tag program) : tag program =
   let decls = rename_decls prog.decls in
@@ -39,7 +39,22 @@ and rename_expr (env : env) expr =
       let x' = gen_id x tag in
       let env' = (x, x') :: env in
       ELet (x', rename_expr env e, rename_expr env' b, tag)
-  | EApp (f, args, tag) -> EApp (f, List.map (rename_expr env) args, tag)
+  | EApp (f, args, tag) ->
+      EApp (rename_expr env f, List.map (rename_expr env) args, tag)
   | ETuple (elements, tag) -> ETuple (List.map (rename_expr env) elements, tag)
   | EGetItem (tuple, index, tag) ->
       EGetItem (rename_expr env tuple, rename_expr env index, tag)
+  | ELambda (params, body, tag) ->
+      let env, params =
+        List.fold_left
+          (fun (env, params) param ->
+            let param' = gen_id param tag in
+            ((param, param') :: env, param' :: params))
+          (env, []) params
+      in
+      let params = List.rev params in
+      ELambda (params, rename_expr env body, tag)
+  | ELetRec (x, e, b, tag) ->
+      let x' = gen_id x tag in
+      let env' = (x, x') :: env in
+      ELetRec (x', rename_expr env' e, rename_expr env' b, tag)

@@ -1,6 +1,8 @@
 (library
  (name hugorm)
- (libraries core))
+ (libraries core)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.ord)))
 
 (ocamllex lexer)
 

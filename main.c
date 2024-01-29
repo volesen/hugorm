@@ -5,6 +5,7 @@
 typedef uint64_t hugorm_val;
 const uint64_t BOOL_TAG = 0x0000000000000003;
 const uint64_t TUPLE_TAG = 0x0000000000000001;
+const uint64_t CLOSURE_TAG = 0x0000000000000005;
 const hugorm_val BOOL_TRUE = 0xFFFFFFFFFFFFFFFF;
 const hugorm_val BOOL_FALSE = 0x7FFFFFFFFFFFFFFF;
 
@@ -31,6 +32,8 @@ void _print(hugorm_val val) {
     printf("true");
   } else if (val == BOOL_FALSE) {
     printf("false");
+  } else if ((val & CLOSURE_TAG) == CLOSURE_TAG) {
+    printf("<closure at %p>", (void *)(val - CLOSURE_TAG));
   } else if ((val & TUPLE_TAG) == 1) {
     // Remove tag from pair pointer
     hugorm_val *tuple = (hugorm_val *)(val - TUPLE_TAG);

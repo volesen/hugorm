@@ -1,11 +1,14 @@
 open Syntax
 open Anf
 open Asm
+open Fvs
 
 exception Integer_overflow
 exception Unreachable of string
+exception Unbound of string
 exception Argument_mismatch of string
 
+let find x env = try List.assoc x env with Not_found -> raise (Unbound x)
 let entry_label = "our_code_starts_here"
 let min_int = Int64.div Int64.min_int 2L
 let max_int = Int64.div Int64.max_int 2L
@@ -14,23 +17,31 @@ let const_false = Const 0x7FFFFFFFFFFFFFFFL
 let bool_mask = Const 0x8000000000000000L
 let bool_tag = Const 0x0000000000000003L
 let tuple_tag = Const 0x0000000000000001L
+let closure_tag = Const 0x0000000000000005L
 let scratch_reg = Reg R11
 let heap_reg = Reg R15
 
+(** [count_let e] is the maximum number of nested let-bindings of any execution of [e] *)
 let count_let (e : 'a aexpr) =
   let rec count_let_cexpr (cexpr : 'a cexpr) =
     match cexpr with
     | CIf (_, l, r, _) -> max (count_let_aexpr l) (count_let_aexpr r)
-    (* Only contain immediate expression *)
-    | CImmExpr _ | CPrim1 _ | CPrim2 _ | CApp _ | CTuple _ | CGetItem _ -> 0
+    (* Only contains immediate expression *)
+    | CImmExpr _ | CPrim1 _ | CPrim2 _ | CApp _ | CTuple _ | CGetItem _
+    | CLambda _ ->
+        0
   and count_let_aexpr (aexpr : 'a aexpr) =
     match aexpr with
     | ALet (_, bind, body, _) ->
         max (count_let_cexpr bind) (1 + count_let_aexpr body)
+    | ALetRec (_, bind, body, _) ->
+        1 + max (count_let_cexpr bind) (count_let_aexpr body)
     | ACExpr cexpr -> count_let_cexpr cexpr
   in
+
   count_let_aexpr e
 
+(* We align heap and stack before function calls *)
 let stack_alignment_padding n = n mod 16
 
 (* Associative list mapping identifier to stack frame slot *)
@@ -43,13 +54,12 @@ let fresh_label ?(prefix = "L") tag = prefix ^ string_of_int tag
 let compile_immexpr (env : env) (immexpr : 'a immexpr) : arg =
   match immexpr with
   | ImmNum (n, _) ->
+      (* TODO: Move to well-formedness check *)
       if n > max_int || n < min_int then raise Integer_overflow
       else Const (Int64.shift_left n 1)
   | ImmBool (true, _) -> const_true
   | ImmBool (false, _) -> const_false
-  | ImmId (x, _) ->
-      let slot = List.assoc x env in
-      RegOffset (RBP, slot)
+  | ImmId (x, _) -> RegOffset (RBP, find x env)
 
 let rec compile_cexpr (env : env) (stack_index : int) (cexpr : tag cexpr) : asm
     =
@@ -58,11 +68,11 @@ let rec compile_cexpr (env : env) (stack_index : int) (cexpr : tag cexpr) : asm
   | CPrim1 (op, e, _) -> compile_cprim1 env op e
   | CPrim2 (op, l, r, tag) -> compile_cprim2 env op l r tag
   | CIf (cond, thn, els, tag) -> compile_cif env stack_index cond thn els tag
-  | CApp ((("print" | "length") as f), args, _) ->
-      compile_native_call env f args
   | CApp (f, args, _) -> compile_capp env f args
   | CTuple (elements, _) -> compile_ctuple env elements
   | CGetItem (tuple, index, _) -> compile_cgetitem env tuple index
+  | CLambda (params, body, tag) ->
+      compile_clambda env stack_index params body tag
 
 and compile_cimmexpr env immexpr =
   let arg = compile_immexpr env immexpr in
@@ -79,6 +89,7 @@ and compile_cprim2 env op l r tag =
   let l_arg = compile_immexpr env l in
   let r_arg = compile_immexpr env r in
   [ IMov (Reg RAX, l_arg); IMov (scratch_reg, r_arg) ]
+  (* TODO: Make case swicth here *)
   @ compile_cprim2_op op tag
 
 and compile_cprim2_op op tag =
@@ -118,12 +129,12 @@ and compile_cif env stack_index cond thn els tag =
   @ [ ILabel end_label ]
 
 and compile_capp env f args =
-  let allocated = 8 * List.length args in
+  let allocated = 8 * (1 + List.length args) in
   let padding = stack_alignment_padding allocated in
   let push_args_asm =
     args |> List.rev
-    |> List.concat_map (fun arg ->
-           compile_cimmexpr env arg @ [ IPush (Reg RAX) ])
+    |> List.map (fun arg -> compile_cimmexpr env arg @ [ IPush (Reg RAX) ])
+    |> List.concat
   in
   let pop_args_asm =
     [ IAdd (Reg RSP, Const (Int64.of_int (allocated + padding))) ]
@@ -132,21 +143,16 @@ and compile_capp env f args =
     if padding <> 0 then [ ISub (Reg RSP, Const (Int64.of_int padding)) ]
     else []
   in
-  align_stack_asm @ push_args_asm @ [ ICall f ] @ pop_args_asm
-
-and compile_native_call env f args =
-  match (f, args) with
-  | "print", [ e ] ->
-      let e_imm = compile_immexpr env e in
-      [ IMov (Reg RDI, e_imm); ICall "print" ]
-  | "length", [ tuple ] ->
-      compile_cimmexpr env tuple
-      @ [
-          ISub (Reg RAX, tuple_tag);
-          IMov (Reg RAX, RegOffset (RAX, 0));
-          ISal (Reg RAX, Const 1L);
-        ]
-  | _ -> raise (Argument_mismatch ("Invalid native call: " ^ f))
+  align_stack_asm @ push_args_asm @ compile_cimmexpr env f
+  @ [
+      (* TODO: We assume f compiles to a closure *)
+      IPush (Reg RAX);
+      (* Remove the closure tag *)
+      ISub (Reg RAX, closure_tag);
+      (* Call the function pointer *)
+      ICall (RegOffset (RAX, 0));
+    ]
+  @ pop_args_asm
 
 and compile_ctuple env elements =
   let size = List.length elements in
@@ -189,34 +195,75 @@ and compile_cgetitem env tuple index =
     IMov (Reg RAX, RegBaseOffset (RAX, R11, 8, 8));
   ]
 
-and compile_aexpr env stack_index aexpr =
-  match aexpr with
-  | ACExpr cexpr -> compile_cexpr env stack_index cexpr
-  | ALet (x, bind, body, _) ->
-      let stack_index' = stack_index - 8 in
-      let env' = (x, stack_index') :: env in
-      compile_cexpr env stack_index bind
-      @ [ IMov (RegOffset (RBP, stack_index'), Reg RAX) ]
-      @ compile_aexpr env' stack_index' body
+and allocate_closure fvs =
+  let to_allocate =
+    let size = 8 * (1 + List.length fvs) in
+    size + stack_alignment_padding size
+  in
+  [
+    (* Tag the closure *)
+    IMov (Reg RAX, heap_reg);
+    (* Bump the header pointer *)
+    IAdd (heap_reg, Const (Int64.of_int to_allocate));
+  ]
 
-let compile_adecl (adecl : 'a adecl) : asm =
-  match adecl with
-  | ADFun (name, params, body, _) ->
-      let frame_size =
-        let max_stack_size = 8 * count_let body in
-        max_stack_size + stack_alignment_padding max_stack_size
-      in
-      let env = List.mapi (fun i param -> (param, (i + 2) * 8)) params in
-      [
-        ILabel name;
-        IPush (Reg RBP);
-        IMov (Reg RBP, Reg RSP);
-        ISub (Reg RSP, Const (Int64.of_int frame_size));
-      ]
-      @ compile_aexpr env 0 body
-      @ [ IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet ]
+and compile_closure env fvs label =
+  (* Assumes that the closure is already allocated, with the header pointer in RAX *)
+  let move_fvs_to_heap_asm =
+    fvs
+    |> List.mapi (fun i fv ->
+           [
+             IMov (scratch_reg, RegOffset (RBP, find fv env));
+             IMov (RegOffset (RAX, 8 * (i + 1)), scratch_reg);
+           ])
+    |> List.concat
+  in
+  [ ILea (scratch_reg, Label label); IMov (RegOffset (RAX, 0), scratch_reg) ]
+  @ move_fvs_to_heap_asm
+  @ [ IAdd (Reg RAX, closure_tag) ]
 
-let compile_body (body : tag aexpr) : asm =
+and compile_lambda_body env stack_index fvs params body =
+  let frame_size =
+    let max_stack_size = 8 * (count_let body + List.length fvs) in
+    max_stack_size + stack_alignment_padding max_stack_size
+  in
+  (* Populate env with function arguments *)
+  let env = List.mapi (fun i param -> (param, 8 * (i + 3))) params @ env in
+  (* Populate env with free variables *)
+  let env = List.mapi (fun i fv -> (fv, -8 * (i + 1))) fvs @ env in
+  (* Move free variables to the stack *)
+  let move_fvs_to_stack_asm =
+    fvs
+    |> List.mapi (fun i fv ->
+           [
+             IMov (Reg RAX, RegOffset (R11, 8 * (i + 1)));
+             IMov (RegOffset (RBP, find fv env), Reg RAX);
+           ])
+    |> List.concat
+  in
+  [
+    IPush (Reg RBP);
+    IMov (Reg RBP, Reg RSP);
+    ISub (Reg RSP, Const (Int64.of_int frame_size));
+    (* Load the `self` pointer *)
+    IMov (scratch_reg, RegOffset (RBP, 16));
+    ISub (scratch_reg, closure_tag);
+  ]
+  @ move_fvs_to_stack_asm
+  @ compile_aexpr env (stack_index - (8 * List.length fvs)) body
+  @ [ IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet ]
+
+and compile_clambda env stack_index params body tag =
+  let fvs = S.elements (S.diff (fvs_aexpr body) (S.of_list params)) in
+  let lambda_label = fresh_label ~prefix:"lambda" tag in
+  let lambda_end_label = fresh_label ~prefix:"lambda_end" tag in
+  [ IJmp lambda_end_label; ILabel lambda_label ]
+  @ compile_lambda_body env stack_index fvs params body
+  @ [ ILabel lambda_end_label ]
+  @ allocate_closure fvs
+  @ compile_closure env fvs lambda_label
+
+and compile_body (body : tag aexpr) : asm =
   let frame_size =
     let max_stack_size = 8 * count_let body in
     max_stack_size + stack_alignment_padding max_stack_size
@@ -231,6 +278,38 @@ let compile_body (body : tag aexpr) : asm =
   ]
   @ compile_aexpr empty_env 0 body
   @ [ IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet ]
+
+and compile_aexpr env stack_index aexpr =
+  match aexpr with
+  | ACExpr cexpr -> compile_cexpr env stack_index cexpr
+  | ALet (x, bind, body, _) ->
+      let stack_index' = stack_index - 8 in
+      let env' = (x, stack_index') :: env in
+      compile_cexpr env stack_index bind
+      @ [ IMov (RegOffset (RBP, stack_index'), Reg RAX) ]
+      @ compile_aexpr env' stack_index' body
+  | ALetRec (f, (CLambda (params, body, tag) as lambda), body', _) ->
+      let fvs = S.elements (fvs_cexpr lambda) in
+      let lambda_label = fresh_label ~prefix:"lambda" tag in
+      let lambda_end_label = fresh_label ~prefix:"lambda_end" tag in
+      let stack_index' = stack_index - 8 in
+      let env' = (f, stack_index') :: env in
+      [ IJmp lambda_end_label; ILabel lambda_label ]
+      @ compile_lambda_body env' stack_index' fvs params body
+      @ [ ILabel lambda_end_label ]
+      @ allocate_closure fvs
+      @ [
+          IMov (scratch_reg, Reg RAX);
+          IAdd (scratch_reg, closure_tag);
+          IMov (RegOffset (RBP, stack_index'), scratch_reg);
+        ]
+      @ compile_closure env' fvs lambda_label
+      @ compile_aexpr env' stack_index' body'
+  | ALetRec _ -> raise (Unreachable __LOC__)
+
+let compile_adecl (adecl : 'a adecl) : asm =
+  match adecl with
+  | ADFun (_, params, body, tag) -> compile_clambda empty_env 0 params body tag
 
 let compile_aprog (aprog : 'a aprogram) : asm =
   let decls_asm = List.concat_map compile_adecl aprog.decls in
