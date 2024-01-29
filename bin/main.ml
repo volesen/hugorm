@@ -1,24 +1,18 @@
-open Printf
 open Hugorm
 
-let () =
-  (* Quick and dirty*)
-  let input_filename = Sys.argv.(1) in
-  let prog = Lex_and_parse.parse_file input_filename in
-  let instrs = Compile.compile prog in
-  let asm_string = Asm.string_of_asm instrs in
+let compile_to_asm (filename : string) =
+  filename
+  |> Hugorm.Lex_and_parse.parse_file
+  |> Compile.compile
+  |> Asm.string_of_asm
+  |> print_endline
 
-  (* Write the assembler to a file *)
-  let oc = open_out "out/a.s" in
-  fprintf oc "%s" asm_string;
-  close_out oc;
+let usage_msg = "hugorm <filename>"
 
-  (* Assemble out.s to out.o *)
-  let _ = Sys.command "nasm -f macho64 -o out/a.o out/a.s" in
+let filename = ref ""
 
-  (* Link out.o to out *)
-  let _ = Sys.command "clang -g -arch x86_64 -o out/a main.c out/a.o" in
+let speclist = [
+  ("-f", Arg.Set_string filename, ": specify input file")
+]
 
-  (* Run the program *)
-  let _ = Sys.command "./out/a" in
-  ()
+let () = Arg.parse speclist compile_to_asm usage_msg
