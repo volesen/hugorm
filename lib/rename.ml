@@ -5,8 +5,6 @@ type env = (string * string) list
 
 let empty_env = []
 
-exception UnboundId of string
-
 let gen_id id tag = id ^ "@" ^ string_of_int tag
 
 let rec rename_program (prog : tag program) : tag program =
@@ -33,8 +31,7 @@ and rename_expr (env : env) expr =
       EPrim2 (op, rename_expr env l, rename_expr env r, tag)
   | EIf (c, t, f, tag) ->
       EIf (rename_expr env c, rename_expr env t, rename_expr env f, tag)
-  | EId (x, tag) -> (
-      try EId (List.assoc x env, tag) with Not_found -> raise (UnboundId x))
+  | EId (x, tag) -> EId (List.assoc x env, tag)
   | ELet (x, e, b, tag) ->
       let x' = gen_id x tag in
       let env' = (x, x') :: env in
