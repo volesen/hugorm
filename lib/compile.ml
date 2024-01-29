@@ -3,12 +3,11 @@ open Anf
 open Asm
 open Fvs
 
-exception Integer_overflow
 exception Unreachable of string
-exception Unbound of string
-exception Argument_mismatch of string
 
-let find x env = try List.assoc x env with Not_found -> raise (Unbound x)
+let find x env =
+  try List.assoc x env with Not_found -> raise (Unreachable __LOC__)
+
 let entry_label = "our_code_starts_here"
 let min_int = Int64.div Int64.min_int 2L
 let max_int = Int64.div Int64.max_int 2L
@@ -53,10 +52,7 @@ let fresh_label ?(prefix = "L") tag = prefix ^ string_of_int tag
 
 let compile_immexpr (env : env) (immexpr : 'a immexpr) : arg =
   match immexpr with
-  | ImmNum (n, _) ->
-      (* TODO: Move to well-formedness check *)
-      if n > max_int || n < min_int then raise Integer_overflow
-      else Const (Int64.shift_left n 1)
+  | ImmNum (n, _) -> Const (Int64.shift_left n 1)
   | ImmBool (true, _) -> const_true
   | ImmBool (false, _) -> const_false
   | ImmId (x, _) -> RegOffset (RBP, find x env)
@@ -156,7 +152,7 @@ and compile_capp env f args =
 
 and compile_ctuple env elements =
   let size = List.length elements in
-  (* We need to maintain the invariant, that *)
+  (* TODO: We need to maintain the invariant, that *)
   let padded_size = if size mod 2 = 0 then size + 1 else size in
   let move_elements_asm =
     elements
@@ -317,7 +313,8 @@ let compile_aprog (aprog : 'a aprogram) : asm =
   [ ISection "text"; IExtern "error"; IExtern "print"; IGlobal entry_label ]
   @ body_asm @ decls_asm
 
-let compile (prog : unit program) : asm =
+let compile (prog : 'a program) : asm =
+  Well_formedness.well_formed prog.body;
   let tagged = Syntax.tag prog in
   let renamed = Rename.rename_program tagged in
   let anfed = Anf.anf_program renamed in

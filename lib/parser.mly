@@ -57,7 +57,7 @@
 
 %start program
 
-%type <unit program> program
+%type <Lexing.position program> program
 
 %%
 
@@ -65,26 +65,26 @@ program:
   | decls=list(decl); body=expr; EOF { { decls; body } }
 
 decl:
-  | DEF; f=ID; params=params; body=expr; IN { DFun(f, params, body, ()) }
+  | DEF; f=ID; params=params; body=expr; IN { DFun(f, params, body, $startpos) }
 
 params:
   | LEFT_PAREN; params=separated_list(COMMA, ID); RIGHT_PAREN { params }
 
 expr:
   | LEFT_PAREN; e=expr; RIGHT_PAREN { e }
-  | i=INT { ENumber(i, ()) }
-  | TRUE { EBool(true, ()) }
-  | FALSE { EBool(false, ()) }
-  | x=ID { EId(x, ()) }
-  | LET; x=ID; EQ; b=expr; IN; e=expr { ELet(x, b, e, ()) }
-  | IF; cond=expr; THEN; thn=expr; ELSE; els=expr { EIf(cond, thn, els, ()) }
-  | op=prim1; e=expr %prec UMINUS { EPrim1(op, e, ()) }
-  | l=expr; op=prim2; r=expr { EPrim2(op, l, r, ()) }
-  | f=expr; args=args { EApp(f, args, ()) }
-  | LEFT_CURLY; elements=separated_list(COMMA, expr); RIGHT_CURLY { ETuple(elements, ())}
-  | tuple=expr; LEFT_BRACKET; index=expr; RIGHT_BRACKET { EGetItem(tuple, index, ()) }
-  | LAMBDA; params=params; ARROW; body=expr { ELambda(params, body, ()) }
-  | LET; REC; x=ID; EQ; b=expr; IN; e=expr { ELetRec(x, b, e, ()) }
+  | i=INT { ENumber(i, $startpos) }
+  | TRUE { EBool(true, $startpos) }
+  | FALSE { EBool(false, $startpos) }
+  | x=ID { EId(x, $startpos) }
+  | LET; x=ID; EQ; b=expr; IN; e=expr { ELet(x, b, e, $startpos) }
+  | IF; cond=expr; THEN; thn=expr; ELSE; els=expr { EIf(cond, thn, els, $startpos) }
+  | op=prim1; e=expr %prec UMINUS { EPrim1(op, e, $startpos) }
+  | l=expr; op=prim2; r=expr { EPrim2(op, l, r, $startpos) }
+  | f=expr; args=args { EApp(f, args, $startpos) }
+  | LEFT_CURLY; elements=separated_list(COMMA, expr); RIGHT_CURLY { ETuple(elements, $startpos)}
+  | tuple=expr; LEFT_BRACKET; index=expr; RIGHT_BRACKET { EGetItem(tuple, index, $startpos) }
+  | LAMBDA; params=params; ARROW; body=expr { ELambda(params, body, $startpos) }
+  | LET; REC; x=ID; EQ; b=expr; IN; e=expr { ELetRec(x, b, e, $startpos) }
 
 args: 
   | LEFT_PAREN; args=separated_list(COMMA, expr); RIGHT_PAREN { args }
