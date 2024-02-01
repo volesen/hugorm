@@ -17,6 +17,7 @@
 %token IN
 
 %token DEF
+%token AND
 
 %token LAMBDA
 %token ARROW
@@ -84,8 +85,10 @@ expr:
   | LEFT_CURLY; elements=separated_list(COMMA, expr); RIGHT_CURLY { ETuple(elements, $startpos)}
   | tuple=expr; LEFT_BRACKET; index=expr; RIGHT_BRACKET { EGetItem(tuple, index, $startpos) }
   | LAMBDA; params=params; ARROW; body=expr { ELambda(params, body, $startpos) }
-  | LET; REC; x=ID; EQ; b=expr; IN; e=expr { ELetRec(x, b, e, $startpos) }
+  | LET; REC; bindings=separated_list(AND, binding); IN; body=expr { ELetRec(bindings, body, $startpos) }
 
+binding:
+  | x=ID; EQ; LAMBDA; params=params; ARROW; body=expr { (x, params, body, $startpos) }
 args: 
   | LEFT_PAREN; args=separated_list(COMMA, expr); RIGHT_PAREN { args }
 

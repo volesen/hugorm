@@ -28,6 +28,7 @@ rule read =
   | "rec"    { REC }
   | "in"     { IN }
   | "def"    { DEF }
+  | "and"    { AND }
   | "lambda" { LAMBDA }
   | "->"     { ARROW }
   | '+'      { PLUS }

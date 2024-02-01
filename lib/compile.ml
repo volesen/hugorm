@@ -5,12 +5,11 @@ open Fvs
 
 exception Unreachable of string
 
-let find x env =
-  try List.assoc x env with Not_found -> raise (Unreachable __LOC__)
-
+(* TODO: Make StringMap *)
+(* TODO: Make StringSet*)
+let find x env = try List.assoc x env with Not_found -> raise (Unreachable x)
+let word_size = 8
 let entry_label = "our_code_starts_here"
-let min_int = Int64.div Int64.min_int 2L
-let max_int = Int64.div Int64.max_int 2L
 let const_true = Const 0xFFFFFFFFFFFFFFFFL
 let const_false = Const 0x7FFFFFFFFFFFFFFFL
 let bool_mask = Const 0x8000000000000000L
@@ -33,11 +32,15 @@ let count_let (e : 'a aexpr) =
     match aexpr with
     | ALet (_, bind, body, _) ->
         max (count_let_cexpr bind) (1 + count_let_aexpr body)
-    | ALetRec (_, bind, body, _) ->
-        1 + max (count_let_cexpr bind) (count_let_aexpr body)
+    | ALetRec (bindings, body, _) ->
+        let max_let_bindings =
+          List.fold_left
+            (fun acc (_, _, body, _) -> max acc (count_let_aexpr body))
+            0 bindings
+        in
+        1 + max max_let_bindings (count_let_aexpr body)
     | ACExpr cexpr -> count_let_cexpr cexpr
   in
-
   count_let_aexpr e
 
 (* We align heap and stack before function calls *)
@@ -49,13 +52,6 @@ type env = (string * int) list
 
 let empty_env : env = []
 let fresh_label ?(prefix = "L") tag = prefix ^ string_of_int tag
-
-let compile_immexpr (env : env) (immexpr : 'a immexpr) : arg =
-  match immexpr with
-  | ImmNum (n, _) -> Const (Int64.shift_left n 1)
-  | ImmBool (true, _) -> const_true
-  | ImmBool (false, _) -> const_false
-  | ImmId (x, _) -> RegOffset (RBP, find x env)
 
 let rec compile_cexpr (env : env) (stack_index : int) (cexpr : tag cexpr) : asm
     =
@@ -69,6 +65,13 @@ let rec compile_cexpr (env : env) (stack_index : int) (cexpr : tag cexpr) : asm
   | CGetItem (tuple, index, _) -> compile_cgetitem env tuple index
   | CLambda (params, body, tag) ->
       compile_clambda env stack_index params body tag
+
+and compile_immexpr (env : env) (immexpr : 'a immexpr) : arg =
+  match immexpr with
+  | ImmNum (n, _) -> Const (Int64.shift_left n 1)
+  | ImmBool (true, _) -> const_true
+  | ImmBool (false, _) -> const_false
+  | ImmId (x, _) -> RegOffset (RBP, find x env)
 
 and compile_cimmexpr env immexpr =
   let arg = compile_immexpr env immexpr in
@@ -191,20 +194,20 @@ and compile_cgetitem env tuple index =
     IMov (Reg RAX, RegBaseOffset (RAX, R11, 8, 8));
   ]
 
-and allocate_closure fvs =
+and allocate_closure num_fvs =
   let to_allocate =
-    let size = 8 * (1 + List.length fvs) in
+    let size = 8 * (1 + num_fvs) in
     size + stack_alignment_padding size
   in
   [
-    (* Tag the closure *)
     IMov (Reg RAX, heap_reg);
-    (* Bump the header pointer *)
+    IAdd (Reg RAX, closure_tag);
     IAdd (heap_reg, Const (Int64.of_int to_allocate));
   ]
 
-and compile_closure env fvs label =
+and compile_closure env fvs tag =
   (* Assumes that the closure is already allocated, with the header pointer in RAX *)
+  let label = fresh_label ~prefix:"lambda" tag in
   let move_fvs_to_heap_asm =
     fvs
     |> List.mapi (fun i fv ->
@@ -214,11 +217,17 @@ and compile_closure env fvs label =
            ])
     |> List.concat
   in
-  [ ILea (scratch_reg, Label label); IMov (RegOffset (RAX, 0), scratch_reg) ]
+  [
+    ISub (Reg RAX, closure_tag);
+    ILea (scratch_reg, Label label);
+    IMov (RegOffset (RAX, 0), scratch_reg);
+  ]
   @ move_fvs_to_heap_asm
   @ [ IAdd (Reg RAX, closure_tag) ]
 
-and compile_lambda_body env stack_index fvs params body =
+and compile_lambda_body env stack_index fvs params body tag =
+  let lambda_label = fresh_label ~prefix:"lambda" tag in
+  let lambda_end_label = fresh_label ~prefix:"lambda_end" tag in
   let frame_size =
     let max_stack_size = 8 * (count_let body + List.length fvs) in
     max_stack_size + stack_alignment_padding max_stack_size
@@ -238,6 +247,8 @@ and compile_lambda_body env stack_index fvs params body =
     |> List.concat
   in
   [
+    IJmp lambda_end_label;
+    ILabel lambda_label;
     IPush (Reg RBP);
     IMov (Reg RBP, Reg RSP);
     ISub (Reg RSP, Const (Int64.of_int frame_size));
@@ -248,16 +259,13 @@ and compile_lambda_body env stack_index fvs params body =
   @ move_fvs_to_stack_asm
   @ compile_aexpr env (stack_index - (8 * List.length fvs)) body
   @ [ IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet ]
+  @ [ ILabel lambda_end_label ]
 
 and compile_clambda env stack_index params body tag =
   let fvs = S.elements (S.diff (fvs_aexpr body) (S.of_list params)) in
-  let lambda_label = fresh_label ~prefix:"lambda" tag in
-  let lambda_end_label = fresh_label ~prefix:"lambda_end" tag in
-  [ IJmp lambda_end_label; ILabel lambda_label ]
-  @ compile_lambda_body env stack_index fvs params body
-  @ [ ILabel lambda_end_label ]
-  @ allocate_closure fvs
-  @ compile_closure env fvs lambda_label
+  compile_lambda_body env stack_index fvs params body tag
+  @ allocate_closure (List.length fvs)
+  @ compile_closure env fvs tag
 
 and compile_body (body : tag aexpr) : asm =
   let frame_size =
@@ -284,24 +292,31 @@ and compile_aexpr env stack_index aexpr =
       compile_cexpr env stack_index bind
       @ [ IMov (RegOffset (RBP, stack_index'), Reg RAX) ]
       @ compile_aexpr env' stack_index' body
-  | ALetRec (f, (CLambda (params, body, tag) as lambda), body', _) ->
-      let fvs = S.elements (fvs_cexpr lambda) in
-      let lambda_label = fresh_label ~prefix:"lambda" tag in
-      let lambda_end_label = fresh_label ~prefix:"lambda_end" tag in
-      let stack_index' = stack_index - 8 in
-      let env' = (f, stack_index') :: env in
-      [ IJmp lambda_end_label; ILabel lambda_label ]
-      @ compile_lambda_body env' stack_index' fvs params body
-      @ [ ILabel lambda_end_label ]
-      @ allocate_closure fvs
-      @ [
-          IMov (scratch_reg, Reg RAX);
-          IAdd (scratch_reg, closure_tag);
-          IMov (RegOffset (RBP, stack_index'), scratch_reg);
-        ]
-      @ compile_closure env' fvs lambda_label
-      @ compile_aexpr env' stack_index' body'
-  | ALetRec _ -> raise (Unreachable __LOC__)
+  | ALetRec (bindings, body, _) ->
+      let env' =
+        List.mapi (fun i (name, _, _, _) -> (name, -8 * (i + 1))) bindings @ env
+      in
+      let stack_index' = stack_index - (8 * List.length bindings) in
+      let allocate_closures_asm =
+        bindings
+        |> List.map (fun (x, params, body, tag) ->
+               let fvs = S.diff (fvs_aexpr body) (S.of_list params) in
+               allocate_closure (S.cardinal fvs)
+               @ [ IMov (RegOffset (RBP, find x env'), Reg RAX) ]
+               @ compile_lambda_body env' stack_index' (S.elements fvs) params
+                   body tag)
+        |> List.concat
+      in
+      let build_closure_asm =
+        bindings
+        |> List.map (fun (x, params, body, tag) ->
+               let fvs = S.diff (fvs_aexpr body) (S.of_list params) in
+               [ IMov (Reg RAX, RegOffset (RBP, find x env')) ]
+               @ compile_closure env' (S.elements fvs) tag)
+        |> List.concat
+      in
+      allocate_closures_asm @ build_closure_asm
+      @ compile_aexpr env' stack_index' body
 
 let compile_adecl (adecl : 'a adecl) : asm =
   match adecl with
@@ -317,6 +332,7 @@ let compile (prog : 'a program) : asm =
   Well_formedness.well_formed prog.body;
   let tagged = Syntax.tag prog in
   let renamed = Rename.rename_program tagged in
+  (* print_endline (Syntax.show_program (fun _ _ -> ()) renamed) ; *)
   let anfed = Anf.anf_program renamed in
   let retagged = Anf.tag anfed in
   compile_aprog retagged

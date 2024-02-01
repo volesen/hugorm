@@ -5,7 +5,7 @@ and 'a adecl = ADFun of string * string list * 'a aexpr * 'a
 
 and 'a aexpr =
   | ALet of string * 'a cexpr * 'a aexpr * 'a
-  | ALetRec of string * 'a cexpr * 'a aexpr * 'a
+  | ALetRec of (string * string list * 'a aexpr * 'a) list * 'a aexpr * 'a
   | ACExpr of 'a cexpr
 
 and 'a cexpr =
@@ -25,10 +25,8 @@ and 'a immexpr =
 
 type ctx = (string * unit cexpr * bool) list
 
-
 let rec anf (e : 'a expr) : unit aexpr =
   let ( let* ) = ( @@ ) in
-
   let rec map f lst k =
     match lst with
     | [] -> k []
@@ -37,15 +35,18 @@ let rec anf (e : 'a expr) : unit aexpr =
         let* xs = map f xs in
         k (x :: xs)
   in
-
   let rec anf_aexpr e k =
     match e with
     | ELet (x, e, body, _) ->
         let* cexpr = anf_cexpr e in
         k (ALet (x, cexpr, anf body, ()))
-    | ELetRec (x, e, body, _) ->
-        let* cexpr = anf_cexpr e in
-        k (ALetRec (x, cexpr, anf body, ()))
+    | ELetRec (bindings, body, _) ->
+        let anf_binding (name, params, body, _) k =
+          k (name, params, anf body, ())
+        in
+        let* bindings = map anf_binding bindings in
+        let* aexpr = anf_aexpr body in
+        k (ALetRec (bindings, aexpr, ()))
     | _ ->
         let* cexpr = anf_cexpr e in
         k (ACExpr cexpr)
@@ -113,10 +114,16 @@ let tag (e : unit aprogram) : tag aprogram =
         let e, tag = tag_cexpr e tag in
         let body, tag = tag_aexpr body tag in
         (ALet (x, e, body, tag), tag + 1)
-    | ALetRec (x, e, body, ()) ->
-        let e, tag = tag_cexpr e tag in
+    | ALetRec (bindings, body, ()) ->
+        let bindings, tag =
+          List.fold_right
+            (fun (name, params, body, ()) (bindings, tag) ->
+              let body, tag = tag_aexpr body tag in
+              ((name, params, body, tag) :: bindings, tag))
+            bindings ([], tag)
+        in
         let body, tag = tag_aexpr body tag in
-        (ALetRec (x, e, body, tag), tag + 1)
+        (ALetRec (bindings, body, tag), tag + 1)
     | ACExpr cexpr ->
         let cexpr, tag = tag_cexpr cexpr tag in
         (ACExpr cexpr, tag + 1)
