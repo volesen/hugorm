@@ -13,7 +13,7 @@ and 'a expr =
   | ETuple of 'a expr list * 'a
   | EGetItem of 'a expr * 'a expr * 'a
   | ELambda of string list * 'a expr * 'a
-  | ELetRec of string * 'a expr * 'a expr * 'a
+  | ELetRec of (string * string list * 'a expr * 'a) list * 'a expr * 'a
 
 and prim1 = Neg | Not
 and prim2 = Add | Sub | Mul | And | Or | Lt | Gt | Leq | Geq | Eq | Ne
@@ -33,7 +33,7 @@ let tag_of_expr (e : 'a expr) : 'a =
   | ETuple (_, tag) -> tag
   | EGetItem (_, _, tag) -> tag
   | ELambda (_, _, tag) -> tag
-  | ELetRec (_, _, _, tag) -> tag
+  | ELetRec (_, _, tag) -> tag
 
 let rec tag_program (prog : 'a program) : tag program =
   let decls, tag = tag_decls prog.decls 0 in
@@ -91,10 +91,20 @@ and tag_expr e tag =
   | ELambda (params, body, _) ->
       let body, tag = tag_expr body tag in
       (ELambda (params, body, tag), tag + 1)
-  | ELetRec (name, func, body, _) ->
-      let func, tag = tag_expr func tag in
+  | ELetRec (bindings, body, _) ->
+      let bindings, tag = tag_bindings bindings tag in
       let body, tag = tag_expr body tag in
-      (ELetRec (name, func, body, tag), tag + 1)
+      (ELetRec (bindings, body, tag), tag + 1)
+
+and tag_bindings bindings tag =
+  let bindings, tag =
+    List.fold_left
+      (fun (bindings, tag) (name, args, body, _) ->
+        let body, tag = tag_expr body tag in
+        ((name, args, body, tag) :: bindings, tag))
+      ([], tag) bindings
+  in
+  (List.rev bindings, tag)
 
 and tag_args args tag =
   let args, tag =

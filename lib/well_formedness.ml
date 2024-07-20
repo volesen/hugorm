@@ -37,15 +37,14 @@ let well_formed e =
     | ELet (x, b, body, _) ->
         well_formed env b;
         well_formed (SS.add x env) body
-    | ELetRec (x, b, body, loc) ->
-        let check_lambda e =
-          match e with
-          | ELambda _ -> ()
-          | _ -> raise (Letrec_non_function (x, loc))
+    | ELetRec (bindings, body, loc) ->
+        let env' =
+          List.fold_left (fun env (x, _, _, _) -> SS.add x env) env bindings
         in
-        check_lambda b;
-        well_formed (SS.add x env) b;
-        well_formed (SS.add x env) body
+        List.iter
+          (fun (_, args, body, _) -> well_formed_fundef env' loc args body)
+          bindings;
+        well_formed env' body
     | EIf (c, t, f, _) ->
         well_formed env c;
         well_formed env t;
@@ -55,16 +54,16 @@ let well_formed e =
         List.iter (well_formed env) args
     | ETuple (exprs, _) -> List.iter (well_formed env) exprs
     | EGetItem (e, _, _) -> well_formed env e
-    | ELambda (xs, body, loc) ->
-        let rec check_dup xs =
-          match xs with
-          | [] -> ()
-          | x :: xs ->
-              if List.mem x xs then raise (Duplicate_param (x, loc))
-              else check_dup xs
-        in
-        check_dup xs;
-        well_formed (SS.union (SS.of_list xs) env) body
+    | ELambda (args, body, loc) -> well_formed_fundef env loc args body
+  and well_formed_fundef env loc args body =
+    let rec check_dup xs =
+      match xs with
+      | [] -> ()
+      | x :: xs ->
+          if List.mem x xs then raise (Duplicate_param (x, loc))
+          else check_dup xs
+    in
+    check_dup args;
+    well_formed (SS.union (SS.of_list args) env) body
   in
-
   well_formed SS.empty e
