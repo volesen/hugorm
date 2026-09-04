@@ -4,7 +4,6 @@ type tag = int
 type env = (string * string) list
 
 let empty_env = []
-
 let gen_id id tag = id ^ "@" ^ string_of_int tag
 
 let rec rename_program (prog : tag program) : tag program =
@@ -51,7 +50,27 @@ and rename_expr (env : env) expr =
       in
       let params = List.rev params in
       ELambda (params, rename_expr env body, tag)
-  | ELetRec (x, e, b, tag) ->
-      let x' = gen_id x tag in
-      let env' = (x, x') :: env in
-      ELetRec (x', rename_expr env' e, rename_expr env' b, tag)
+  | ELetRec (bindings, body, tag) ->
+      let env =
+        List.map
+          (fun (name, _, _, tag) ->
+            let name' = gen_id name tag in
+            (name, name'))
+          bindings
+        @ env
+      in
+      let bindings =
+        List.map
+          (fun (name, args, body, tag) ->
+            (* Rename args *)
+            let env, args' =
+              List.fold_left
+                (fun (env, args) arg ->
+                  let arg' = gen_id arg tag in
+                  ((arg, arg') :: env, arg' :: args))
+                (env, []) args
+            in
+            (List.assoc name env, args', rename_expr env body, tag))
+          bindings
+      in
+      ELetRec (bindings, rename_expr env body, tag)
